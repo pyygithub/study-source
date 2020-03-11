@@ -1,0 +1,18 @@
+{
+  "name": "pyy-admin-docs",
+  "version": "1.0.0",
+  "description": "pyy-admin-x 项目文档",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vuepress dev docs",
+    "build": "vuepress build docs",
+    "deploy": "bash deploy.sh"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {},
+  "devDependencies": {
+    "vuepress-plugin-autobar": "github:boboidream/vuepress-bar"
+  }
+}
