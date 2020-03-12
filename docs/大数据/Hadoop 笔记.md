@@ -135,7 +135,6 @@ MySQL 单表超过 500万 条数据
 3. **Hadoop 生态圈**
 
    - **HDFS**：Hadoop Distribute FileSystem
-
    - **MapReduce**：Hadoop中的分布式计算框架，实现对海量数据的并行分析和计算。
    - **Hbase**：基于HDFS的列式存储的 NoSQL 数据库。
    - **Hive**：简化大数据开发，可以将 SQL 语法翻译成 MR 任务。
@@ -144,34 +143,110 @@ MySQL 单表超过 500万 条数据
    - **Zookeeper**：分布式协调服务，用于服务注册中心、配置中心、集群选举、状态监测、分布式锁等。
 
 
-4. **Hadoop 核心组成（commons、hdfs、mr、yarn 4 配置文件模板）**
-   - Hadoop-Commons  	  core-site.xml （工具模块 底层）
-
-   - Hadoop-HDFS				 hdfs-site.xml
-
-   - MapReduce 框架			mapRed-site.xml
-
-   - Yarn								  yarn-site.mxl
-
-
-4. **核心组成（commons、hdfs、mr、yarn 4 配置文件模板）**
-
-   - Hadoop-Commons  	  core-site.xml （工具模块 底层）
-
-   - Hadoop-HDFS				 hdfs-site.xml
-
-   - MapReduce 框架			mapRed-site.xml
-
-   - Yarn								  yarn-site.mxl
-
-   
-
-
-
 ## 大数据解决方案
 
-- MR：代表基于**磁盘**的大数据离线批处理的解决方案 - 延迟较高
-- Spark：代表基于**内存**的大数据静态批处理的解决方案 - 几乎是MR的10倍
+- **MR**：代表基于**磁盘**的大数据离线批处理的解决方案 - 延迟较高
+- **Spark**：代表基于**内存**的大数据静态批处理的解决方案 - 几乎是MR的10倍以上
+- **Storm/Spark Streaming/Flink/Kafka Streaming**：实时流处理框架，达到对记录级别的数据显示和毫秒级处理
+
+## HDFS 分布式系统配置
+**核心配置参数：**
+
+- 指定 hadoop 的默认文件系统为：hdfs
+- 指定 hdfs 的 namenode 节点是哪台机器
+- 指定 namenode 软件存储元数据的本地目录
+- 指定 datanode 软件存储文件块的本地目录  
+
+1. 环境配置文件hadoop-env.sh
+
+   ```shell
+   # The java implementation to use.
+   export JAVA_HOME=/opt/soft/jdk1.8.0_211
+   export HADOOP_CONF_DIR=${HADOOP_CONF_DIR:-$PWD} #Hadoop配置文件的存放目录
+   ```
+
+2. 核心配置文件 core-site.xml
+
+   ```xml
+   <configuration>
+       <!-- fs.defaultFS: 默认文件系统 hdfs  -->
+       <property>
+           <name>fs.defaultFS</name>
+           <value>hdfs://hdp-01:9000</value>
+       </property> 
+   </configuration>
+   ```
+
+3. HDFS配置文件hdfs-site.xml
+
+   ```xml
+   <configuration>
+       <!-- namenode 地址 -->
+       <property>
+           <name>dfs.namenode.http-address</name>
+           <value>hdp-01:50070</value>
+       </property>
+       <!-- secondary namenode 地址 -->
+       <property>
+           <name>dfs.namenode.http-address</name>
+           <value>hdp-01:50090</value>
+       </property>
+       
+       <!-- 指定 namenode 软件存储元数据的本地目录 格式化节点时会自动生成-->
+       <property>
+           <name>dfs.namenode.name.dir</name>
+           <value>/root/hdpdata/name</value>
+       </property>
+       <!-- 指定 datanode 软件存储文件块的本地目录 格式化节点时会自动生成   -->
+       <property>
+           <name>dfs.datanode.data.dir</name>
+           <value>/root/hdpdata/data</value>
+       </property> 
+   
+   </configuration>
+   ```
+
+4. 配置datanode集群节点文件 slaves
+
+   ```shell
+   hdp-01
+   hdp-02
+   hdp-03
+   ```
+
+5. 配置好以上信息后，我们就可以将hadoop的包分发给其他的节点了
+
+   ```shell
+   scp -r hadoop-2.x.x root@hdp02:(目标路径)
+   ```
+
+6. 启动集群
+
+   在主节点上运行
+
+   ```
+   hadoop namenode -format
+   ```
+
+   运行完成后，节点会自动生成刚刚配置的工作目录
+
+   ```
+   start-dfs.sh
+   ```
+
+7. 浏览器输入http://x.x.x.x:50070查看集群运行情况
+
+   ![namenode](/Users/wolf/Desktop/node/study/docs/大数据/img/namenode.png)
+
+8. 最终服务器分布：
+
+   | 服务器地址 | 端口             | 服务                                          |
+   | ---------- | ---------------- | --------------------------------------------- |
+   | hdp-01     | 50070<br />50090 | namenode<br />secondaryNamenode<br />datanode |
+   | hdp-02     | 50010/50075      | datanode                                      |
+   | hdp-03     | 50010/50075      | datanode                                      |
+
+
 
 ## HDFS 体系架构
 
