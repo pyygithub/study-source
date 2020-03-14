@@ -1,6 +1,6 @@
 module.exports = {
-    title: 'PYY-ADMIN在线文档',
-    description: 'PYY-ADMIN在线文档',
+    title: 'PYY在线笔记文档',
+    description: 'PYY在线笔记文档',
     head: [ // 注入到当前页面的 HTML <head> 中的标签
         ['link', {rel: 'icon', href: '/img/logo.png'}], // 增加一个自定义的 favicon(网页标签的图标)
     ],
