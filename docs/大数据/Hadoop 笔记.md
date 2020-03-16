@@ -386,7 +386,7 @@ SecondaryNameNode 就是来帮助我们解决上述问题的，它的职责是�
 
 - 有dfs.namenode.checkpoint.period和dfs.namenode.checkpoint.txns 两个配置，只要达到这两个条件任何一个，secondarynamenode就会执行checkpoint的操作。
 
-- 当触发 checkpoint 操作时，NameNode 会生成一个新的 edits 即上图中的 edits.new 文件，同时 SecondaryNameNode 会将 edits 文件和 fsimage 复制到本地（HTTP GET方式）
+- 当触发 checkpoint 操作时，SecondaryNameNode 告诉 NameNode 滚动到它的 edits_inprogress 文件，这样新来的write操作就会放到一个这个新的 edits文件中。同时，Secondary 通过HTTP GET方式从 NameNode 获取到最新的 fsimage 和 edits 文件
 
 - SecondaryNameNode 将下载下来的 fsimage 载入到内存，然后一条一条的执行 edits 文件中的各项操作，使得内存中的 fsimage 保持最新，这个过程就是 edits和fsimage文件合并，生成一个新的 fsimage文件，即上图的 fsimage.ckpt 文件。
 
@@ -434,6 +434,156 @@ NameNode 和 Secondary NameNode 的工作目录存储结构是完全相同的，
 从上面的描述我们可以看出，SecondaryNameNode 根本不是 NameNode 的一个热备，其只是将 fsimage 和 edits 合并。其拥有的 fsimage 不会最新的，因为它从 NameNode 下载 fsimage 和 edits 文件时候，新的更新操作已经写到 edit.new 文件中去了。而这些更新在 SecondaryNameNode 是没有同步到的。当然，如果 NameNode 中的 fsimage 真的出问题了，还是可以用 SecondaryNameNode 中的 fsimage 替换一下 NameNode 上的 fimage，虽然已经不是最新的 fsimage，但是我们可以将损失减少到最小！
 
  
+
+### 安全模式
+
+**安全模式的作用**
+
+Hadoop 的安全模式即只读模式，是指当前系统中数据的副本数比较少，在该阶段要对数据块进行复制操作，不允许外界对数据库进行修改和删除等操作。处于安全模式的NameNode是不会进行数据块的复制的。
+
+NameNode 启动时，首先将映像文件（fsimage）载入内存，并执行编辑日志（edits）中的各项操作。一旦在内中成功建立文件系统元数据的映像，则创建一个新的 fsimage 文件（这个操作不需要SecondaryNameNode）和一个空的编辑文件（edits_inprogress...）。此时，NameNode 开始监听 RPC 和 HTTP 请求。但此时，NameNode 运行在安全模式下，对于客户端来说是只读的。
+
+处于安全模式的NameNode是不会进行数据块的复制的。
+
+**何时进入安全模式**
+
+- NameNode在启动的时候首先进入安全模式
+
+- 满足最小复本数要求的数据块比例达不到dfs.safemode.threshold.pct
+
+  如果datanode丢失的block达到一定的比例（1-dfs.safemode.threshold.pct），则系统会一直处于安全模式状态即只读状态。dfs.safemode.threshold.pct（缺省值0.999f）表示HDFS启动的时候，如果DataNode上报的block个数达到了元数据记录的block个数的0.999倍才可以离开安全模式，否则一直是这种只读模式。如果设为1则HDFS永远是处于SafeMode。
+
+**何时退出安全模式**
+
+- 如果满足“最小复本条件”namenode会在30秒之后退出安全模式。所谓的最小复本条件指的是文件系统中有99.9%的块满足最小复本级别（默认值是1，由dfs.replication.min属性设置）。
+- 手动退出
+
+**安全模式的配置**
+
+https://www.iteblog.com/archives/977.html
+https://www.cnblogs.com/admln/p/5821983.html
+
+```xml
+dfs.replication：设置数据块应该被复制的份数；
+dfs.replication.min：所规定的数据块副本的最小份数；
+dfs.replication.max：所规定的数据块副本的最大份数；
+dfs.safemode.threshold.pct：指定应有多少比例的数据块满足最小副本数要求。
+  (1)当小于这个比例， 那就将系统切换成安全模式，对数据块进行复制；
+  (2)当大于该比例时，就离开安全模式，说明系统有足够的数据块副本数，可以对外提供服务。
+  (3)小于等于0意味不进入安全模式，大于1意味一直处于安全模式。
+```
+
+副本数按dfs.replication设置，如果有失效节点导致某数据块副本数降低，当低于dfs.replication.min后，系统再在其他节点处复制新的副本。如果该数据块的副本经常丢失，导致在环境中太多的节点处复制了超过dfs.replication.max的副本数，那么就不再复制了。
+
+**手动操作安全模式**
+
+①查看namenode是否处于安全模式：hadoop dfsadmin –safemode get
+②执行某条命令前namenode先退出安全模式：hadoop dfsadmin –safe wait
+③进入安全模式：hadoop dfsadmin –safemode enter
+④离开安全模式：hadoop dfsadmin –safemode leave
+
+
+
+### 从一个 HDFS edits 文件看到的一些问题
+
+```
+-rw-r--r-- 1 root root      42 Mar 16 11:28 edits_0000000000000010479-0000000000000010480
+-rw-r--r-- 1 root root      42 Mar 16 11:29 edits_0000000000000010481-0000000000000010482
+-rw-r--r-- 1 root root      42 Mar 16 11:30 edits_0000000000000010483-0000000000000010484
+-rw-r--r-- 1 root root      42 Mar 16 11:31 edits_0000000000000010485-0000000000000010486
+-rw-r--r-- 1 root root      42 Mar 16 11:32 edits_0000000000000010487-0000000000000010488
+-rw-r--r-- 1 root root      42 Mar 16 11:33 edits_0000000000000010489-0000000000000010490
+-rw-r--r-- 1 root root      42 Mar 16 11:34 edits_0000000000000010491-0000000000000010492
+-rw-r--r-- 1 root root      42 Mar 16 11:35 edits_0000000000000010493-0000000000000010494
+-rw-r--r-- 1 root root      42 Mar 16 11:36 edits_0000000000000010495-0000000000000010496
+-rw-r--r-- 1 root root      42 Mar 16 11:37 edits_0000000000000010497-0000000000000010498
+-rw-r--r-- 1 root root      42 Mar 16 11:38 edits_0000000000000010499-0000000000000010500
+-rw-r--r-- 1 root root      42 Mar 16 11:39 edits_0000000000000010501-0000000000000010502
+-rw-r--r-- 1 root root      42 Mar 16 11:40 edits_0000000000000010503-0000000000000010504
+-rw-r--r-- 1 root root      42 Mar 16 11:41 edits_0000000000000010505-0000000000000010506
+-rw-r--r-- 1 root root      42 Mar 16 11:42 edits_0000000000000010507-0000000000000010508
+-rw-r--r-- 1 root root      42 Mar 16 11:43 edits_0000000000000010509-0000000000000010510
+-rw-r--r-- 1 root root      42 Mar 16 11:44 edits_0000000000000010511-0000000000000010512
+-rw-r--r-- 1 root root      42 Mar 16 11:45 edits_0000000000000010513-0000000000000010514
+-rw-r--r-- 1 root root      42 Mar 16 11:46 edits_0000000000000010515-0000000000000010516
+-rw-r--r-- 1 root root      42 Mar 16 11:47 edits_0000000000000010517-0000000000000010518
+-rw-r--r-- 1 root root      42 Mar 16 11:48 edits_0000000000000010519-0000000000000010520
+-rw-r--r-- 1 root root      42 Mar 16 11:49 edits_0000000000000010521-0000000000000010522
+-rw-r--r-- 1 root root      42 Mar 16 11:50 edits_0000000000000010523-0000000000000010524
+-rw-r--r-- 1 root root      42 Mar 16 11:51 edits_0000000000000010525-0000000000000010526
+-rw-r--r-- 1 root root      42 Mar 16 11:52 edits_0000000000000010527-0000000000000010528
+-rw-r--r-- 1 root root      42 Mar 16 11:53 edits_0000000000000010529-0000000000000010530
+-rw-r--r-- 1 root root      42 Mar 16 11:54 edits_0000000000000010531-0000000000000010532
+-rw-r--r-- 1 root root      42 Mar 16 11:55 edits_0000000000000010533-0000000000000010534
+-rw-r--r-- 1 root root      42 Mar 16 11:56 edits_0000000000000010535-0000000000000010536
+-rw-r--r-- 1 root root 1048576 Mar 16 11:56 edits_inprogress_0000000000000010537
+-rw-r--r-- 1 root root     322 Mar 12 20:05 fsimage_0000000000000000000
+-rw-r--r-- 1 root root      62 Mar 12 20:05 fsimage_0000000000000000000.md5
+-rw-r--r-- 1 root root       6 Mar 16 11:56 seen_txid
+-rw-r--r-- 1 root root     214 Mar 12 20:05 VERSION
+[root@thtf-01 current]# 
+```
+
+
+
+1. 为什么会有这么多 edits文件？
+
+   这些edits 文件创建的时间都是间隔1个小时，这是因为每隔1小时，SecondaryNameNode 都会对 edits 和 fsimage 进行一次合并，合并之后，旧的 edits 并不会被删除，依旧被保留。
+
+   
+
+2. edits_inprogress… 文件作用？
+
+   最新的一个edtis文件，用来记录用户的上传、删除操作。
+
+   
+
+3. 那我们看 fsimage 只保留两个文件。
+
+   **fsimage… .md5**： 是对应文件的md5值文件，用来保证 fsimage的一致性的。
+
+   **seen_txid**：里面保存了最新的一个 edits 文件的名字 最后的三位：107.
+
+   NameNode 格式化后 第一次启动时，会创建一个 edits 和 fsimage 文件，后面再次启动时，直接加载 每个 edits 和最新的 fsimage 文件。
+
+   
+
+4. 为什么要每个 edits 都加载呢？fsimage不是已经保存之前 edits日志当中转换后的 元数据了么？
+
+   这是为了再做一次校验的工作，确保加载到内存当中的元数据是可靠的。
+
+   
+
+5. Edits 文件是用来做什么的？为什么要保留这么多 edtis文件，像 fsimage一样保存一两个文件不就可以了么？
+
+   1）edits是用来存放 用户的 上传、删除请求的日志的。当用户上传成功，这条记录会保存到 内存元数据当中。也就是说，edits是作为一个中间文件。
+
+   2）当 secondarynamenode 对 edtis 和 fsimage 进行合并时，会创建一个新的 edits 文件，以接收在合并期间 来的新的 用户上传请求。所以，每次触发 Secondaryname 的 checkpoint（也就是对edits和 fsimage 合并），都会产生一个新的 edtis 文件。
+
+   
+
+6. 旧的 edtis 文件一直会保留，会不会有一天 edits把空间沾满了啊？还有 fsimage，它保留了所有 block块的信息，总有一天会很大吧？
+
+   这个问题其实我们不用担心，因为 edtis 和 fsimage 只是保留了 每个文件的位置等的信息，这些信息经过很长时间也不会占用多少空间的。
+
+   但也会遇到小文件太多的问题，比如下面场景：
+
+   | 文件              | NameNode内存占用             | DataNode磁盘占用 |
+   | ----------------- | ---------------------------- | ---------------- |
+   | 128MB             | 一个block块的元数据信息 1KB  | 128MB            |
+   | 128MB*10000个文件 | 10000block块元数据信息：10MB | 128MB            |
+
+   HDFS最初是为流式访问大文件开发的，如果访问大量小文件，需要不断的从一个datanode跳到另一个datanode，严重影响性能。
+
+   引申出问题：
+
+   （1）NameNode所在的物理节点内存应该多给一点
+
+   （2）理论上hdfs是可以无限扩充的，因此可以在横向上扩展无数个节点。但是因为NameNode实际只能有一个运行，所以hdfs的上限容量受制于NameNode的内存上限容量。
+
+   y
+
+
 
 ## HDFS 命令行客户端基本操作
 
