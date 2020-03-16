@@ -336,7 +336,104 @@ HDFS 是一种能够运行在商业硬件上的分布式文件系统，与目前
 
   具体配置可参考：https://blog.csdn.net/zhongqi2513/article/details/73695229
 
+
+
+## HDFS 核心工作原理
+
+### 元数据管理
+
+NameNode对数据的管理采用三种存储形式：
+
+- 内存元数据（NameSystem）
+- 磁盘元数据镜像文件
+- 数据操作日志文件（可通过日志运算出元数据）
+
+### 元数据存储机制
+
+- 内存中有个一份完整的元数据（内存meta.data）
+
+- 磁盘有一个”准完整“的元数据镜像（fsimage）文件（在namenode的工作目录中）
+
+- 用于衔接内存meta.data和持久化元数据镜像fsimage之间的操作日志（edits文件）注：当客户端对hdfs中的文件进行新增或修改操作，操作记录首先被记入edits日志文件中，当客户端操作成功后，相应的元数据会被更新到内存meta.data中
+
+### SecondaryNameNode 检查点
+
+![img](https://img2018.cnblogs.com/blog/1800342/201909/1800342-20190914210628269-226786838.png)
+
+NameNode 职责是管理元数据信息，DataNode的职责是负责数据具体存储，那么 SecondaryNameNode 的作用是什么？它为什么会出现在 HDFS 中。从它的名字上看，它给人的感觉就像是 NameNode的备份。但实际上却不是。
+
+**HDFS 集群运行一段时间后，可能会出现的问题：**
+
+- edits 文件会变的很大，怎么去管理这个文件是一个挑战。
+- NameNode 重启会花费很长时间，因为有很多改动要合并到 fsimage 文件上。
+- 如果 NameNode 挂掉了，那就丢失了一些改动。因为此时的 fsimage 文件非常旧。
+
+因此为了克服这个问题，我们需要一个易于管理的机制来帮助我们`减少 edits 文件的大小和得到一个最新的fsimage文件`，这样也会减少在 NameNode 上的压力。这跟windows的恢复点是非常像的，windows的恢复点机制允许我们对OS进行快照，这样当系统发生问题时，我们能够回滚到最新的一次恢复点上。
+
+SecondaryNameNode 就是来帮助我们解决上述问题的，它的职责是合并 NameNode 的 edits 到 fsimage文件中。
+
+
+
+**Checkpoint**
+
+每达到触发条件，会由 SecondaryNameNode 将 NameNode 上积累的所有 edits 和一个最新的 fsimage 下载到本地，并加载到内存进行 merge，而这个过程就称为：**checkpoint**
+
+![img](https://img2018.cnblogs.com/blog/1800342/201909/1800342-20190914210629780-8637981.png)
+
+**详细步骤**
+
+- NameNode 管理着元数据信息，其中有两类持久化元数据文件：edits 操作日志文件和 fsImage 元数据镜像文件。新的操作日志不会立即与 fsimage 进行合并，也不会刷到 NameNode 内存中，而是会先写到 edits 中（因为合并需要消耗大量的资源）。
+
+- 有dfs.namenode.checkpoint.period和dfs.namenode.checkpoint.txns 两个配置，只要达到这两个条件任何一个，secondarynamenode就会执行checkpoint的操作。
+
+- 当触发 checkpoint 操作时，NameNode 会生成一个新的 edits 即上图中的 edits.new 文件，同时 SecondaryNameNode 会将 edits 文件和 fsimage 复制到本地（HTTP GET方式）
+
+- SecondaryNameNode 将下载下来的 fsimage 载入到内存，然后一条一条的执行 edits 文件中的各项操作，使得内存中的 fsimage 保持最新，这个过程就是 edits和fsimage文件合并，生成一个新的 fsimage文件，即上图的 fsimage.ckpt 文件。
+
+- SecondaryNameNode 将新生成的 fsimage.ckpt文件复制到NameNode节点。
+
+- 在 NameNode 节点的 edits.new 文件和 fsimage.ckpt文件会替换掉原来的 edits 文件 和 fsimage 文件，至此刚好是一个轮回。
+
+- 等待下一次checkpoint触发SecondaryNameNode进行工作，一直这样循环操作。
+
   
+
+**补充：**
+
+NameNode 和 Secondary NameNode 的工作目录存储结构是完全相同的，所以，当NameNode故障退出需要重新恢复时，可以从Secondary NameNode的工作目录中将fsimage拷贝到NameNode的工作目录，以恢复NameNode的元数据。
+
+  chepoint检查时间参数设置：
+
+  （1）通常情况下，SecondaryNameNode每个一小时执行一次。
+
+  ```xml
+  # hdfs-default.xml
+  <property>
+    <name>dfs.namenode.checkpoint.period</name>
+    <value>3600</value>
+  </property>
+  ```
+
+  （2）一分钟检查一次操作次数，当操作次数达到一百万时，SecondaryNameNode执行一次。
+
+  ```xml
+  <property>
+    <name>dfs.namenode.checkpoint.txns</name>
+    <value>1000000</value>
+  	<description>操作动作次数</description>
+  </property>
+  <property>
+    <name>dfs.namenode.checkpoint.check.period</name>
+    <value>60</value>
+  	<description> 1分钟检查一次操作次数</description>
+  </property>
+  ```
+
+ 
+
+从上面的描述我们可以看出，SecondaryNameNode 根本不是 NameNode 的一个热备，其只是将 fsimage 和 edits 合并。其拥有的 fsimage 不会最新的，因为它从 NameNode 下载 fsimage 和 edits 文件时候，新的更新操作已经写到 edit.new 文件中去了。而这些更新在 SecondaryNameNode 是没有同步到的。当然，如果 NameNode 中的 fsimage 真的出问题了，还是可以用 SecondaryNameNode 中的 fsimage 替换一下 NameNode 上的 fimage，虽然已经不是最新的 fsimage，但是我们可以将损失减少到最小！
+
+ 
 
 ## HDFS 命令行客户端基本操作
 
