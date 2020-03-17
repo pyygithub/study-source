@@ -284,9 +284,7 @@ HDFS 是一种能够运行在商业硬件上的分布式文件系统，与目前
 
      所以我们设置block大小为 128MB。
 
-  4. 实际中，磁盘的传输速率为 200MB/s时，一般设定block块大小为256MB；磁盘传输速率为400MB/s时，一般设定block大小为512MB.
-
-  5. g
+  4. 实际中，磁盘的传输速率为 200MB/s时，一般设定block块大小为256MB；磁盘传输速率为400MB/s时，一般设定block大小为512MB. 
 
 ### 什么是机架感知？
 
@@ -358,8 +356,6 @@ NameNode对数据的管理采用三种存储形式：
 
 ### SecondaryNameNode 检查点
 
-![img](https://img2018.cnblogs.com/blog/1800342/201909/1800342-20190914210628269-226786838.png)
-
 NameNode 职责是管理元数据信息，DataNode的职责是负责数据具体存储，那么 SecondaryNameNode 的作用是什么？它为什么会出现在 HDFS 中。从它的名字上看，它给人的感觉就像是 NameNode的备份。但实际上却不是。
 
 **HDFS 集群运行一段时间后，可能会出现的问题：**
@@ -378,7 +374,7 @@ SecondaryNameNode 就是来帮助我们解决上述问题的，它的职责是�
 
 每达到触发条件，会由 SecondaryNameNode 将 NameNode 上积累的所有 edits 和一个最新的 fsimage 下载到本地，并加载到内存进行 merge，而这个过程就称为：**checkpoint**
 
-![img](https://img2018.cnblogs.com/blog/1800342/201909/1800342-20190914210629780-8637981.png)
+![img](./img/checkpoint.png)
 
 **详细步骤**
 
@@ -396,7 +392,6 @@ SecondaryNameNode 就是来帮助我们解决上述问题的，它的职责是�
 
 - 等待下一次checkpoint触发SecondaryNameNode进行工作，一直这样循环操作。
 
-  
 
 **补充：**
 
@@ -433,7 +428,15 @@ NameNode 和 Secondary NameNode 的工作目录存储结构是完全相同的，
 
 从上面的描述我们可以看出，SecondaryNameNode 根本不是 NameNode 的一个热备，其只是将 fsimage 和 edits 合并。其拥有的 fsimage 不会最新的，因为它从 NameNode 下载 fsimage 和 edits 文件时候，新的更新操作已经写到 edit.new 文件中去了。而这些更新在 SecondaryNameNode 是没有同步到的。当然，如果 NameNode 中的 fsimage 真的出问题了，还是可以用 SecondaryNameNode 中的 fsimage 替换一下 NameNode 上的 fimage，虽然已经不是最新的 fsimage，但是我们可以将损失减少到最小！
 
- 
+### HDFS 写数据流程
+
+![](./img/write.png)
+
+
+
+### HDFS 读数据流程
+
+![](./img/read.png)
 
 ### 安全模式
 
@@ -581,9 +584,7 @@ dfs.safemode.threshold.pct：指定应有多少比例的数据块满足最小副
 
    （2）理论上hdfs是可以无限扩充的，因此可以在横向上扩展无数个节点。但是因为NameNode实际只能有一个运行，所以hdfs的上限容量受制于NameNode的内存上限容量。
 
-   y
-
-
+   
 
 ## HDFS 命令行客户端基本操作
 
@@ -686,7 +687,7 @@ HDFS 的客户端有多种形式：
 
 ### 开发环境准备
 
-1. 在本地解决Hadoop安装包
+1. 在本地解压Hadoop安装包
 2. 在环境变量中配置：HADOOP_HOME
 3. 创建 SpringBoot 工程,引入 Hadoop 依赖包
 
@@ -858,5 +859,803 @@ org.apache.hadoop.security.AccessControlException: Permission denied: user=wolf,
 
 
 
-·
+### HDFS客户端编程应用场景：数据采集
+
+![](./img/1240.png)
+
+#### 需求描述
+
+在业务系统服务器上，业务程序会不断生成业务日志（比如网站的访问日志）
+
+业务日志是用log4j生成的，会不断的切出日志文件
+
+需要定期（如：每小时）从业务服务器上的日志文件中，探测需要采集的日志文件（access.log)，发往HDFS
+
+注意点：业务服务器可能有多台（hdfs上的文件名不能直接用日志服务器上的文件名）
+
+当天采集的日志要放在hdfs的当天目录中
+
+采集完成的日志文件，需要移动到日志服务器的一个备份目录中
+
+定期检查（一小时检查一次）备份目录，将备份时长超过24小时的日志文件清除  
+
+
+
+#### 数据采集设计
+
+**1、流程**
+
+启动一个定时任务
+- 定时探测日志源目录
+- 获取需要采集的文件
+- 移动这些文件到一个待上传的临时目录
+- 遍历待上传目录中的各个文件，逐一传输到HDFS的目标路径，同时将传输完成的文件移动到备份目录
+
+启动一个定时任务
+
+- 探测备份目录中的备份数据，检查是否已超出最长备份时长，如果超出，则删除
+
+**2、规划各种路径**
+
+日志源路径：/Users/wolf/logs/access
+
+待上传临时目录：/Users/wolf/logs /tmp
+
+备份目录：/Users/wolf/logs/backup/日期
+
+HDFS存储路径：/logs/日期 
+
+HDFS文件前缀：access_log_
+
+HDFS文件后缀：.log
+
+
+
+#### 代码实现
+
+配置文件：collect.properties
+
+```properties
+LOG_SOURCE_DIR=/Users/wolf/logs/access/
+LOG_TMP_DIR=/Users/wolf/logs/tmp/
+LOG_BACKUP_BASE_DIR=/Users/wolf/logs/backup/
+LOG_BACKUP_TIMEOUT=24
+
+HDFS_DEST_BASE_DIR=/logs
+HDFS_FILE_PREFIX=access_log_
+HDFS_FILE_SUFFIX=.log
+```
+
+配置常量池： Constants.java
+
+```java
+public class Constants {
+    public static final String LOG_SOURCE_DIR = "LOG_SOURCE_DIR";
+    public static final String LOG_TMP_DIR = "LOG_TMP_DIR";
+    public static final String LOG_BACKUP_BASE_DIR = "LOG_BACKUP_BASE_DIR";
+    public static final String LOG_BACKUP_TIMEOUT = "LOG_BACKUP_TIMEOUT";
+    public static final String HDFS_DEST_BASE_DIR = "HDFS_DEST_BASE_DIR";
+    public static final String HDFS_FILE_PREFIX = "HDFS_FILE_PREFIX";
+    public static final String HDFS_FILE_SUFFIX = "HDFS_FILE_SUFFIX";
+}
+```
+
+ 配置文件加载类：PropertyHolder.java
+
+```java
+import java.io.IOException;
+import java.util.Properties;
+
+public class PropertyHolder {
+
+    private static Properties prop;
+
+    public static Properties getProps() throws IOException {
+        if (prop == null) {
+            synchronized (PropertyHolder.class) {
+                if (prop == null) {
+                    prop = new Properties();
+                    prop.load(PropertyHolder.class.getClassLoader().getResourceAsStream("collect.properties"));
+                }
+            }
+        }
+        return prop;
+    }
+}
+
+```
+
+日志收集task：CollectTask.java
+
+```java
+import org.apache.commons.io.FileUtils;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.*;
+
+public class CollectTask extends TimerTask {
+    private Logger logger = LoggerFactory.getLogger(CollectTask.class);
+
+    @Override
+    public void run() {
+        // - 定时探测日志源目录
+        // - 获取需要采集的文件
+        // - 移动这些文件到一个待上传的临时目录
+        // - 遍历待上传目录中的各个文件，逐一传输到HDFS的目标路径，同时将传输完成的文件移动到备份目录
+
+        // 获取本地采集是的日期
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd-HH");
+        String date = sdf.format(new Date());
+
+        // 构造一个HDFS的客户端对象
+        try {
+            Properties props = PropertyHolder.getProps();
+
+            File srcDir  = new File(props.getProperty(Constants.LOG_SOURCE_DIR));
+            // 列出日志源目录中需要采集的文件
+            File[] listFiles = srcDir.listFiles((File dir, String name) -> {
+                return name.startsWith("access.log");
+            });
+
+            if (listFiles.length == 0) {
+                logger.info("探测到如下文件需要采集为空！");
+                return;
+            }
+
+            logger.info("探测到如下文件需要采集：{}", Arrays.toString(listFiles));
+
+            // 将要采集的文件移动到待上传临时目录
+            File tmpDir = new File(props.getProperty(Constants.LOG_TMP_DIR));
+            for (File file : listFiles) {
+                FileUtils.moveFileToDirectory(file, tmpDir, true);
+            }
+
+
+            System.setProperty("HADOOP_USER_NAME", "root");
+            Configuration configuration = new Configuration();
+            // 手动设置连接信息
+            //configuration.set("fs.defaultFS", "")
+            configuration.addResource("core-site.xml");
+            configuration.addResource("hdfs-site.xml ");
+            FileSystem fs = FileSystem.newInstance(configuration);
+
+            // 检查HDFS的日期目录是否存在，不存在就创建
+            Path hdfsDatePath = new Path(props.getProperty(Constants.HDFS_DEST_BASE_DIR) + date);
+            if (!fs.exists(hdfsDatePath)) {
+                fs.mkdirs(hdfsDatePath);
+            }
+
+            File[] toUploadFiles = tmpDir.listFiles();
+            for (File file : toUploadFiles) {
+                Path destPath = new Path(hdfsDatePath + props.getProperty(Constants.HDFS_FILE_PREFIX) + UUID.randomUUID() + props.getProperty(Constants.HDFS_FILE_SUFFIX));
+                // 传输文件到HDFS并修改名称
+                fs.copyFromLocalFile(new Path(file.getAbsolutePath()), destPath);
+                logger.info("文件上传hdfs完成：{} --> {}", file.getAbsolutePath(), destPath);
+
+                File backupDir = new File(props.getProperty(Constants.LOG_BACKUP_BASE_DIR) + date + "/");
+                FileUtils.moveFileToDirectory(file, backupDir, true);
+                logger.info("文件备份完成：{} --> {}", file.getAbsolutePath(), backupDir);
+             }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+日志备份清理task：BackupCleanTask.java
+
+```java
+import org.apache.commons.io.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.text.SimpleDateFormat;
+import java.util.TimerTask;
+
+public class BackupCleanTask extends TimerTask {
+    private Logger logger = LoggerFactory.getLogger(BackupCleanTask.class);
+
+    /**
+     * The action to be performed by this timer task.
+     */
+    @Override
+    public void run() {
+        logger.info("定时清理任务开始执行");
+        // 获取本地采集是的日期
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd-HH");
+        long now = System.currentTimeMillis();
+
+        try {
+            // 探测本地备份目录
+            File backupBaseDir = new File("/Users/wolf/logs/backup/");
+            File[] dateBackDir = backupBaseDir.listFiles();
+
+            // 判断备份日期子目录是否已经超过24小时
+            for (File dir : dateBackDir) {
+                if (!dir.isHidden()) {
+                    long time = sdf.parse(dir.getName()).getTime();
+                    if ((now - time) > 24*60*60*1000L) {
+                        FileUtils.deleteDirectory(dir);
+                        logger.info("备份目录：{} 清理完毕！", dir.getName());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+定时任务main函数：DataCollectMain.java
+
+```java
+import java.util.Timer;
+
+public class DataCollectMain {
+
+    public static void main(String[] args) {
+        Timer timer = new Timer();
+
+        // 定时数据收集
+        timer.schedule(new CollectTask(), 0, 60*60*1000L);
+
+        // 定时清理历史数据备份
+        timer.schedule(new BackupCleanTask(), 0, 60*60*1000L);
+
+    }
+}
+```
+
+
+
+### HDFS版的wordcount
+
+HdfsWordCount.java
+
+```java
+package com.pyy.wordcount;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.*;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+
+public class HdfsWordCount {
+
+    public static void main(String[] args) throws Exception {
+        // 初始化
+        Properties props = new Properties();
+        props.load(HdfsWordCount.class.getClassLoader().getResourceAsStream("job.properties"));
+
+        Class<?> mapper_impl_class = Class.forName(props.getProperty("MAPPER_IMPL_CLASS"));
+        Mapper mapper = (Mapper) mapper_impl_class.newInstance();
+
+        Context context = new Context();
+
+
+        // 去hdfs中读取文件：一次读一行
+        FileSystem fs = FileSystem.get(new URI("hdfs://10.10.50.189:9000"), new Configuration(), "root");
+        RemoteIterator<LocatedFileStatus> iterator = fs.listFiles(new Path("/wordcount/input"), false);
+        while (iterator.hasNext()) {
+            LocatedFileStatus file = iterator.next();
+            FSDataInputStream in = fs.open(file.getPath());
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(in));
+            String line = null;
+            while ((line = br.readLine()) != null) {
+                // 调用一个方法对每一行进行业务处理
+                mapper.map(line, context);
+            }
+            br.close();
+            in.close();
+        }
+
+        HashMap<Object, Object> contextMap = context.getContextMap();
+        Path outPath = new Path("/wordcount/output/");
+        if (!fs.exists(outPath)) {
+            fs.mkdirs(outPath);
+        }
+
+        FSDataOutputStream out = fs.create(new Path("/wordcount/output/res.dat"));
+
+        Set<Map.Entry<Object, Object>> entrySet = contextMap.entrySet();
+        for (Map.Entry<Object, Object> entry : entrySet) {
+            out.write((entry.getKey().toString() + "\t" + entry.getValue() + "\n").getBytes());
+        }
+
+        out.close();
+        fs.close();
+
+        System.out.println("数据统计完成！");
+    }
+
+}
+```
+
+job.properties
+
+```properties
+MAPPER_IMPL_CLASS=com.pyy.wordcount.WordCountMapper
+```
+
+Mapper.java 
+
+```java
+public interface Mapper {
+    public void map(String line, Context context);
+}
+
+```
+
+WordCountMapper.java
+
+```java
+public class WordCountMapper implements Mapper {
+
+    @Override
+    public void map(String line, Context context) {
+        String[] words = line.split(" ");
+        for (String word : words) {
+            Object value = context.get(word);
+            if (null == value) {
+                context.write(word, 1);
+            } else {
+                int v = (int)value;
+                context.write(word, v+1);
+            }
+        }
+    }
+}
+```
+
+Context.java
+
+```java
+
+import java.util.HashMap;
+
+public class Context {
+
+    private HashMap<Object, Object> contextMap = new HashMap<>();
+
+    public void write(Object key, Object value) {
+        contextMap.put(key, value);
+    }
+
+    public Object get(Object key) {
+        return contextMap.get(key);
+    }
+
+    public HashMap<Object, Object> getContextMap() {
+        return contextMap;
+    }
+}
+```
+
+统计文件：
+
+a.txt:
+
+```
+hello tom
+hello jim
+hello jeca
+hello kata
+hello wolf
+```
+
+b.txt
+
+```
+hello tom
+hello jim
+hello jeca
+hello kata
+hello wolf
+```
+
+c.txt
+
+```
+hello tom
+hello jim
+hello jeca
+hello kata
+hello wolf
+```
+
+d.txt
+
+```
+hello tom
+hello jim
+hello jeca
+hello kata
+hello wolf
+```
+
+统计结果：
+
+rst.dat
+
+```
+kata    4
+tom     4
+wolf    4
+jeca    4
+hello   20
+jim     4
+```
+
+
+
+## MapReduce
+
+### MapReduce 是什么？
+
+> MapReduce是一种编程模型，用于大规模数据集（大于1TB）的并行运算。概念"Map（映射）"和"Reduce（归约）"，是它们的主要思想，都是从函数式编程语言里借来的，还有从矢量编程语言里借来的特性。它极大地方便了编程人员在不会分布式并行编程的情况下，将自己的程序运行在[分布式系统](https://baike.baidu.com/item/分布式系统)上。 当前的软件实现是指定一个Map（映射）函数，用来把一组键值对映射成一组新的键值对，指定并发的Reduce（归约）函数，用来保证所有映射的键值对中的每一个共享相同的键组。(摘自百度百科)
+
+
+
+### 为什么要使用MR？
+
+上面我们写的HDFS版wordcount程序：统计hdfs的/wordcount/input/a.txt文件中的单词出现个数
+
+明白了一点：可以在任何地方运行程序，访问HDFS上的文件并进行统计运算，并且可以把统计结果写回HDFS的结果文件中。
+
+但是，进一步思考：如果文件又多又大，用上面的代码有什么弊端？
+
+**慢！因为只有一台机器在进行运算处理。**
+
+如何变的更快？
+
+核心思路：让我们的程序并行在多台机器上执行。
+
+### MapReduce 框架
+
+分两个阶段：
+
+- map阶段 -- 程序MapTask
+- reduce阶段 -- 程序ReduceTask
+
+### MapReduce具有的特点
+
+总所周知MapReduce是一种很受欢迎的软件框架，尤其是我们国家发展到现在互联网的浪潮愈演愈烈，那么它都有什么特点呢？
+
+- **易于编程**：MapReduce通过相应的接口，程序员只需要简单的调用就可以完成对一个复杂的分布式程序的编写。
+- **易扩展性**：在计算资源不足时可以通过增加机器来增加计算能力。
+- **高容错性**：要知道MapReduce的提出就是为了运行在廉价的商用pc中，而商用pc得到问题也是颇多，经常会出现pc挂掉的情况，这时候就需要可以迅速的把计算任何和资源转移到另外的一个节点上运行，从而保证任务、作业的顺利运行。
+- **海量PB级数据的离线处理**：所谓离线处理即为它不具体毫秒级别的迅速反馈能力，在对反馈要求非常及时的场景下，自然是不可用的
+
+那么MapReduce有哪些不适合的场景呢？
+
+- **实时计算**：没有mysql等数据库的毫秒级反馈能力。
+- **流式计算**：流式计算的输入数据时动态的，而 MapReduce 的输入数据集是静态的，不能动态变化。这是因为 MapReduce 自身的设计特点决定了数据源必须是静态的。
+- **DAG(有向图)模式**：即每个作业或者任务之间都有很强的连接性，下一个作业的运行需要另外一个作业的运行结果的数据，这种情况下MapReduce的性能非常低，因为每个MapReduce的作业都会把计算写入到磁盘中，若如此做则会造成大量的磁盘IO,性能低下。
+
+### MapReduce 实例
+
+为了分析 MapReduce 的编程模型，这里我们以 WordCount 为实例。就像 Java、C++等编程语言的入门程序 hello word 一样，WordCount 是 MapReduce 最简单的入门程序。下面我们就来逐步分析。
+
+**1. 场景**：假如有大量的文件，里面存储的都是单词。
+
+类似应用场景：WordCount 虽然很简单，但它是很多重要应用的模型。
+
+- 搜索引擎中，统计最流行的 K 个搜索词。
+- 统计搜索词频率，帮助优化搜索词提示。
+
+**2. 任务**：我们该如何统计每个单词出现的次数？
+
+**3. 将问题规范为**：有一批文件（规模为 TB 级或者 PB 级），如何统计这些文件中所有单词出现的次数。
+
+**4. 解决方案**：首先，分别统计每个文件中单词出现的次数；然后，累加不同文件中同一个单词出现次数。
+
+### MapReduce 版 wordcount 代码实现
+
+- 第一步：导入maven依赖
+
+  ```xml
+  <!-- hadoop-client -->
+  <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-client</artifactId>
+      <version>2.10.0</version>
+  </dependency>
+  ```
+
+- 第二步：编写WordcountMapper.java
+
+  ```java
+  package com.pyy.mr;
+  
+  import org.apache.hadoop.io.IntWritable;
+  import org.apache.hadoop.io.LongWritable;
+  import org.apache.hadoop.io.Text;
+  import org.apache.hadoop.mapreduce.Mapper;
+  import java.io.IOException;
+  
+  /**
+   * KEYIN: 是一行的起始偏移量 Long
+   * VALUEIN：是一行的内容 String
+   *
+   * KEYOUT：用户自定义map方法要返回的结果kv数据的key的类型，在wordcount中，我们需要返回的是单词 String
+   * VALUEOUT： 用户自定义map方法要返回的结果kv数据的value的类型，在wordcount中，我们需要返回的是整数 Integer
+   *
+   * 但是，MapReduce中，map产生的数据要传输为 reduce，需要进行序列化和反序列化，而原生jdk序列化产生的数据量比较冗余
+   * 就会导致数据在MapReduce运行过程效率低，所有，hadoop专门设计了自己的序列化机制，那么，mapreduce中传输的数据类型就必须
+   * 要实现hadoop自己的序列化接口
+   *
+   * hadoop为jdk中的常用数据类型 Long String Integer Float等数据类型封装了自己的实现Hadoop序列化接口类型：LongWritable，Text，IntWritable, FloatWritable
+   */
+  public class WordcountMapper extends Mapper<LongWritable, Text, Text, IntWritable> {
+  
+      @Override
+      protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+          // 切单词
+          String line = value.toString();
+          String[] words = line.split(" ");
+          for (String word : words) {
+              context.write(new Text(word), new IntWritable(1));
+          }
+      }
+  }
+  ```
+
+- 编写 WordcountReducer.java
+
+  ```java
+  package com.pyy.mr;
+  
+  import org.apache.hadoop.io.IntWritable;
+  import org.apache.hadoop.io.Text;
+  import org.apache.hadoop.mapreduce.Reducer;
+  import java.io.IOException;
+  import java.util.Iterator;
+  
+  public class WordcountReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
+  
+      @Override
+      protected void reduce(Text key, Iterable<IntWritable> values, Context context) throws IOException, InterruptedException {
+  
+          int count = 0;
+          Iterator<IntWritable> iterator = values.iterator();
+          while(iterator.hasNext()) {
+              IntWritable value = iterator.next();
+              count += value.get();
+          }
+          context.write(key, new IntWritable(count));
+      }
+  }
+  ```
+
+### MapReduce 执行流程
+
+通过上面的分析可知，它其实就是一个典型的 MapReduce 过程。下面我们通过示意图来分析 MapReduce 过程。
+
+![](./img/mapreduce.png)
+
+上图流程大致分为以下几步：
+
+- 第一步：假设一个文件有三行英文单词作为 MapReduce 的input（输入），这里经过 Splitting 过程把文件分割为3块。分割后的3块数据就可以并行处理，每一块交给一个 maptask 处理。
+
+- 第二步：每个 maptask 中，以每个单词为key，以1作为词频数value，然后输出。
+- 第三步：每个 maptask 的输出要经过 shuffling（混洗），将相同的单词key放在同一个桶里面，然后交给 reducetask 处理。
+- 第四步：reduce 接收到 shuffling 后的数据，会将相同单词进行合并，得到每个单词的词频数，最后将统计好的每个单词的词频数作为输出结果。
+
+上述就是 MapReduce 的大致流程，前两步可以看做是 Map 阶段，后两步可以看成 Reduce阶段。
+
+具体如何执行，我们还需要借助于 YARN。
+
+### YARN简介
+
+> Apache Hadoop YARN （Yet Another Resource Negotiator，另一种资源协调者）是一种新的 Hadoop 资源管理器，它是一个通用资源管理系统，可为上层应用提供统一的资源管理和调度，它的引入为集群在利用率、资源统一管理和数据共享等方面带来了巨大好处。（摘自百度百科）
+
+ 
+
+### YARN架构
+
+![MapReduce NextGen Architecture](https://hadoop.apache.org/docs/r2.9.1/hadoop-yarn/hadoop-yarn-site/yarn_architecture.gif)
+
+yarn是一个分布式程序的**运行调度平台**
+
+yarn中有**两大核心角色**：
+
+**1、Resource Manager**
+
+接受用户提交的分布式计算程序，并为其划分资源
+
+管理、监控各个Node Manager上的资源情况，以便于均衡负载
+
+**2、Node Manager**
+
+管理它所在机器的运算资源（cpu + 内存）
+
+负责接受Resource Manager分配的任务，创建容器、回收资源
+
+### YARN 的安装
+
+NodeManager 在物理上应该跟 DataNode 部署在一起（方便任务执行）
+
+ResourceManager 最好单独部署在一台专门的机器上。
+
+1. 修改配置文件：yarn-site.xml
+
+   ```xml
+   <configuration>
+     <property>
+     	<name>yarn.resourcemanager.hostname</name>
+     	<value>thtf-01</value>
+     </property>
+     <property>
+     	<name>yarn.nodemanager.aux-services</name>
+     	<value>mapreduce_shuffle</value>
+   	</property>
+       <property>
+     	<name>mapreduce.framework.name</name>
+     	<value>yarn</value>
+   	</property>
+   </configuration>
+   ```
+
+2. 拷贝配置文件：mapred-site.xml.template mapred-site.xml 设置job提交到哪里运行
+
+   ```
+   <configuration>
+     <property>
+     	<name>mapreduce.framework.name</name>
+     	<value>yarn</value>
+   	</property>
+   </configuration>
+   ```
+
+3. scp 这个 yarn-site.xml mapped-site.xml 到其它节点
+
+4. 启动 yarn 集群：start-yarn.sh （注：该命令应该在 ResourceManager 所在的机器上执行,就会在该机器上启动 RM）
+
+5. 用 `jps` 检查 yarn 的进程，用 web 浏览器查看 yarn 的 web 控制台。
+
+   http://10.10.50.189:8088
+
+   ![](./img/yarn.png)
+
+### 运行上面的 wordcount mr程序
+
+1. 接着上面的 wordcount 工程，编写 JobSubmitter 客户端类
+
+   ```java
+   import org.apache.hadoop.conf.Configuration;
+   import org.apache.hadoop.fs.FileSystem;
+   import org.apache.hadoop.fs.Path;
+   import org.apache.hadoop.io.IntWritable;
+   import org.apache.hadoop.io.Text;
+   import org.apache.hadoop.mapreduce.Job;
+   import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+   import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+   import java.io.IOException;
+   
+   /**
+    * 提交 mapreduce job 的客户端
+    * 功能：
+    *  1. 封装本次job运行时需要的必要参数
+    *  2. 跟yarn进行校核，将mapreduce程序成功的启动、运行
+    */
+   public class JobSubmitter {
+   
+       public static void main(String[] args) throws Exception {
+           System.setProperty("HADOOP_USER_NAME", "root");
+   
+           Configuration conf = new Configuration();
+           conf.addResource("core-site.xml");
+           conf.addResource("hdfs-site.xml");
+           conf.addResource("yarn-site.xml");
+           conf.addResource("mapred-site.xml");
+           // 如果要从windows上运行这个job提交客户端程序，则需要加这个跨平台提交的参数
+           //conf.set("mapreduce.app-submission.cross-platform", "true");
+           FileSystem fs = FileSystem.newInstance(conf);
+           Job job = Job.getInstance(conf);
+   
+           // 1.封装参数：jar包所在位置
+           // job.setJar("/wc.jar")
+           job.setJarByClass(JobSubmitter.class);
+   
+           // 2.封装参数：本地job所要调用的Mapper实现类、Reducer实现类
+           job.setMapperClass(WordcountMapper.class);
+           job.setReducerClass(WordcountReducer.class);
+   
+           // 3.封装参数：本次job的Mapper实现类、Reducer实现类产生的结果数据的key、value类型
+           job.setMapOutputKeyClass(Text.class);
+           job.setMapOutputValueClass(IntWritable.class);
+   
+           job.setOutputKeyClass(Text.class);
+           job.setOutputValueClass(IntWritable.class);
+   
+           Path output = new Path("/wordcount/output/");
+           if (fs.exists(output)) {
+               fs.delete(output, true);
+           }
+   
+           // 4.封装参数：本次job要处理的封装的输入数据集所在路径、最终结果的输出路径。
+           FileInputFormat.setInputPaths(job, new Path("/wordcount/input/"));
+           FileOutputFormat.setOutputPath(job, output);//注意：必须保证路径不存在
+   
+           // 5.封装参数：想要启动的 reducer task的数量（默认1） （map task 自己根据切片自动）
+           job.setNumReduceTasks(2);
+   
+           // 6.提交job给yarn
+           boolean res = job.waitForCompletion(true);
+   
+           System.exit(res ? 0 : -1);
+   
+       }
+   }
+   ```
+   
+2. 运行方式
+
+   - **远程jar包部署**
+
+     ```java
+     // 设置jar类加载器，否则找不到Mapper和Reducer
+     job.setJarByClass(JobSubmitter.class)
+     ```
+
+     ```shell
+     打包 mvn clean package
+     上传 jar 包到 linux 系统
+     保证 hdfs 和 yarn 都正常启动和运行
+     
+     通过 hadoop jar 命令运行
+     hadoop jar wc-1.0-SNAPSHOT.jar com.pyy.mr.JobSubmitter
+     ```
+
+     
+
+   - **跨平台提交**
+
+     ```java
+     // 如果要从非linux上运行这个job提交客户端程序，则需要加这个跨平台提交的参数
+     conf.set("mapreduce.app-submission.cross-platform", "true");
+     ```
+
+     或配置 mapred-site.xml
+
+     ```xml
+     <configuration>
+     	<property>
+       		<name>mapreduce.framework.name</name>
+       		<value>yarn</value>
+     	</property>
+     	<property>
+     		<name>mapreduce.app-submission.cross-platform</name>
+     		<value>true</value>
+     	</property>
+     </configuration>
+     ```
+
+     设置jar包路径
+
+     ```java
+      job.setJar("/wc.jar");//系统会通过网络将jar删除到yarn
+     ```
+
+3. 去hdfs的输出目录查看结果。
+
+   ![](./img/wc_res.png)
+
+
 
