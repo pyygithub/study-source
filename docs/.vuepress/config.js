@@ -17,6 +17,6 @@ module.exports = {
             {text: 'Github', link: 'https://github.com/pyy-admin-x'},
 
         ],
-        sidebarDepth: 2, // 侧边栏显示2级
+        sidebarDepth: 4, // 侧边栏显示2级
     }
 };
