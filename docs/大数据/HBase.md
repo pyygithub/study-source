@@ -1,4 +1,4 @@
-# 概述
+# HBase
 
 官网：http://hbase.apache.org
 
@@ -29,7 +29,6 @@ RDBMS：关系数据库管理系统特点
 2. 容量上限（分库分表）
 3. 业务需要事务（ACID）
 4. 丰富的 SQL 语法
-
 
 
 HBase 表结构

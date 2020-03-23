@@ -1,5 +1,4 @@
-Hive
-
+# Hive
 ## 什么是数仓
 
 ### 基本概念
@@ -133,3 +132,154 @@ Hive
 - 用户在使用数据仓库时，通过元数据访问数据，明确数据项的含义以及定制报表。 
 - 数据仓库的规模及其复杂性离不开正确的元数据管理，包括增加或移除外部数据源，改变数据清洗方法，控制出错的查询以及安排备份等。 
 
+![](./img/dm.png)
+
+元数据可分为**技术元数据**和**业务元数据**。
+
+技术元数据为开发和管理数据仓库的IT 人员使用，它描述了与数据仓库开发、管理和维护相关的数据，包括数据源信息、数据转换描述、数据仓库模型、数据清洗与更新规则、数据映射和访问权限等。
+
+而业务元数据为管理层和业务分析人员服务，从业务角度描述数 据，包括商务术语、数据仓库中有什么数据、数据的位置和数据的可用性等，帮助业务人员更好地理解数据仓库中哪些数据是可用的以及如何使用。 
+
+由上可见，元数据不仅定义了数据仓库中数据的模式、来源、抽取和转换规则等，而且是整个数据仓库系统运行的基础，元数据把数据仓库系统中各个松散的组件联系起来，组成了一个有机的整体。
+
+## **Hive** 的基本概念
+
+### Hive 简介
+
+#### 什么是 **Hive** ？
+
+Hive是基于Hadoop的一个数据仓库工具，可以将结构化的数据文件映射为一张数据库表，并提供类SQL查询功能。
+
+其本质是将SQL转换为MapReduce的任务进行运算，底层由HDFS来提供数据的存储，说白了hive可以 理解为一个将SQL转换为MapReduce的任务的工具，甚至更进一步可以说hive就是一个MapReduce的 客户端。
+
+![](./img/hive1.png)
+
+#### 为什么使用 Hive ？
+
+- 直接使用hadoop所面临的问题
+  - 人员学习成本太高 
+  - 项目周期要求太短 
+  - MapReduce实现复杂查询逻辑开发难度太大
+
+- 为什么要使用Hive
+  - 操作接口采用类SQL语法，提供快速开发的能力。 
+  - 避免了去写MapReduce，减少开发人员的学习成本。 
+  - 功能扩展很方便。
+
+#### Hive的特点
+
+- 可扩展
+
+  Hive 可以自由的扩展集群的规模，一般情况下不需要重启服务。 
+
+- 延展性 
+
+  Hive 支持用户自定义函数，用户可以根据自己的需求来实现自己的函数。 
+
+- 容错
+
+  良好的容错性，节点出现问题SQL仍可完成执行。 
+
+### Hive架构
+
+![](./img/hive_jiagou.png)
+
+- **用户接口**： 包括CLI、JDBC/ODBC。其中，CLI(command line interface)为shell命令行；JDBC/ODBC是Hive的JAVA实现，与传统数据库JDBC类似； 
+- **元数据存储**： 通常是存储在关系数据库如mysql/derby中。Hive 将元数据存储在数据库中。Hive中的元数据包括表的名字，表的列和分区及其属性，表的属性（是否为外部表等），表的数据所在目录等。 
+- **解释器、编译器、优化器、执行器**: 完成HQL 查询语句从词法分析、语法分析、编译、优化以及查询计划的生成。生成的查询计划存储在HDFS 中，并在随后有MapReduce 调用执行。 
+
+**工作原理**：
+
+1.  用户创建数据库、表信息，存储在hive的元数据库中；
+
+2.  向表中加载数据，元数据记录hdfs文件路径与表之间的映射关系；
+
+3.  执行查询语句，首先经过解析器、编译器、优化器、执行器，将指令翻译成MapReduce，提交到Yarn上执行，最后将执行返回的结果输出到用户交互接口。
+
+   
+
+### Hive与Hadoop的关系
+
+Hive利用HDFS存储数据，利用MapReduce查询分析数据
+
+![](./img/hive_hadoop.png)
+
+
+
+### **Hive**与传统数据库对比 
+
+hive 用于海量数据的离线数据分析 
+
+![](./img/hive_sql.png)
+
+总结：hive具有sql数据库的外表，但应用场景完全不同，hive只适合用来做批量数据统计分析 。
+
+## Hive安装和环境配置
+
+1. 手动安装：自行Google
+2. CDH安装：自行Google
+
+
+
+### Hive的三种连接方式
+
+1. 第一种交互方式 **bin/hive**
+
+   ```shell
+   #/bin/hive
+   ```
+
+   通过hive shell来操作hive，但是至多只能存在一个hive shell，启动第二个会被阻塞，也就是说hive shell不支持并发操作。
+
+2. 第二种交互方式 **HiveServer2** 
+
+   基于JDBC等协议：启动hiveserver2，通过jdbc协议可以访问hive，hiveserver2支持高并发。
+
+   简而言之，hiveserver2是Hive启动了一个server，客户端可以使用JDBC协议，通过IP+ Port的方式对其进行访问，达到并发访问的目的。
+
+   ```shell
+   #启动服务端（前台启动命令如下）
+   #/bin/hive --service hiveserver2
+   ```
+   在装了相同版本Hive的其他主机(启动hiveserver2的主机也可以)上启动beeline，可以连接到Hive的server上。执行命令：
+
+   ```shell
+   #/bin/beeline -u jdbc:hive2://node-00:10000
+   ```
+
+3. 第三种交互方式：使用**sql**语句或者**sql**脚本进行交互
+
+   不进入hive的客户端直接执行hive的hql语句 
+
+   ```shell
+   #/bin/hive -e "create database if not exists mytest;"
+   ```
+
+   或者我们可以将我们的hql语句写成一个sql脚本然后执行
+
+   ```shell
+   #vim hive.sql
+   ```
+
+   ```sql
+   create database if not exists mytest; 
+   use mytest; 
+   create table stu(id int,name string);
+   ```
+
+   通过hive -f 来执行我们的sql脚本
+
+   ```shell
+   #/bin/hive -f hive.sql
+   ```
+
+   
+
+## **Hive**的基本操作
+
+### 创建数据库 
+
+```mysql
+create database if not exists myhive; 
+use myhive;
+```

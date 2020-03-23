@@ -1,4 +1,4 @@
-#  Hadoop 笔记
+#  Hadoop
 
 
 ## 大数据概念
