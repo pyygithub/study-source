@@ -790,71 +790,71 @@ org.apache.hadoop.security.AccessControlException: Permission denied: user=wolf,
 ### 下载文件
 
 ```java
-    @Test
-    public void download1() throws IOException {
-        fs.copyToLocalFile(new Path("/hdfs文件"), new Path("/本地目录"));
-    }
+@Test
+public void download1() throws IOException {
+  fs.copyToLocalFile(new Path("/hdfs文件"), new Path("/本地目录"));
+}
 
-    @Test
-    public void download2() throws IOException {
-        FileInputStream inputStream = new FileInputStream(new File("hdfs文件"));
-        FSDataOutputStream outputStream = fs.create(new Path("/本地目录"));
-        IOUtils.copyBytes(inputStream, outputStream, 1024, true);
-    }
+@Test
+public void download2() throws IOException {
+  FileInputStream inputStream = new FileInputStream(new File("hdfs文件"));
+  FSDataOutputStream outputStream = fs.create(new Path("/本地目录"));
+  IOUtils.copyBytes(inputStream, outputStream, 1024, true);
+}
 ```
 
 ### 创建文件夹
 
 ```java
-		@Test
-    public void create() throws IOException {
-        fs.mkdirs(new Path("/a/b"));
-    }
+@Test
+public void create() throws IOException {
+  fs.mkdirs(new Path("/a/b"));
+}
 ```
 
 ### 删除文件
 
 ```java
-		@Test
-    public void delete() throws IOException {
-        // 递归删除
-        boolean delete = fs.delete(new Path("/a"), true);
-    }
+@Test
+public void delete() throws IOException {
+  // 递归删除
+  boolean delete = fs.delete(new Path("/a"), true);
+}
 ```
 
 ### 递归查询目录下所有文件列表
 
 ```java
-    @Test
-    public void listFile() throws IOException {
-        RemoteIterator<LocatedFileStatus> remoteIterator = fs.listFiles(new Path("/"), true);
-        while(remoteIterator.hasNext()) {
-            LocatedFileStatus fileStatus = remoteIterator.next();
-            String name = fileStatus.getPath().getName();
-            System.out.println(name);
-        }
-    }
+@Test
+public void listFile() throws IOException {
+  RemoteIterator<LocatedFileStatus> remoteIterator = fs.listFiles(new Path("/"), true);
+  while(remoteIterator.hasNext()) {
+    LocatedFileStatus fileStatus = remoteIterator.next();
+    String name = fileStatus.getPath().getName();
+    System.out.println(name);
+  }
+}
 ```
 
 ### 判断文件是否存在
 
 ```java
-		@Test
-    public void exist() throws IOException {
-        boolean exists = fs.exists(new Path("/a.txt"));
-        System.out.println(exists);
-    }
+@Test
+public void exist() throws IOException {
+  boolean exists = fs.exists(new Path("/a.txt"));
+  System.out.println(exists);
+}
 ```
 
 ### 回收站
 
 ```java
-		@Test
-    public void trash() throws IOException {
-        Trash trash = new Trash(fs, configuration);
-        boolean b = trash.moveToTrash(new Path("/a.txt"));
-        System.out.println(b);
-    }
+@Test
+public void trash() throws IOException {
+  Trash trash = new Trash(fs, configuration);
+  boolean b = trash.moveToTrash(new Path("/a.txt"));
+  System.out.println(b);
+}
 ```
 
 
@@ -916,9 +916,9 @@ HDFS文件后缀：.log
 配置文件：collect.properties
 
 ```properties
-LOG_SOURCE_DIR=/Users/wolf/logs/access/
-LOG_TMP_DIR=/Users/wolf/logs/tmp/
-LOG_BACKUP_BASE_DIR=/Users/wolf/logs/backup/
+LOG_SOURCE_DIR=/logs/access/
+LOG_TMP_DIR=/logs/tmp/
+LOG_BACKUP_BASE_DIR=/logs/backup/
 LOG_BACKUP_TIMEOUT=24
 
 HDFS_DEST_BASE_DIR=/logs
@@ -974,7 +974,6 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -1056,7 +1055,6 @@ public class CollectTask extends TimerTask {
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.TimerTask;
@@ -1123,8 +1121,6 @@ public class DataCollectMain {
 HdfsWordCount.java
 
 ```java
-package com.pyy.wordcount;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.*;
 import java.io.BufferedReader;
@@ -1489,7 +1485,7 @@ yarn中有**两大核心角色**：
 
 ### YARN 的安装
 
-NodeManager 在物理上应该跟 DataNode 部署在一起（方便任务执行）
+NodeManager 在物理上应该跟 DataNode 部署在一起（方便任务执行）通过slaves文件设置
 
 ResourceManager 最好单独部署在一台专门的机器上。
 
@@ -1499,7 +1495,7 @@ ResourceManager 最好单独部署在一台专门的机器上。
    <configuration>
      <property>
      	<name>yarn.resourcemanager.hostname</name>
-     	<value>thtf-01</value>
+     	<value>hdp-01</value>
      </property>
      <property>
      	<name>yarn.nodemanager.aux-services</name>
