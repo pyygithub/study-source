@@ -6,7 +6,7 @@ module.exports = {
     ],
     base: '/study/', // 这是部署到github相关的配置
     markdown: {
-        lineNumbers: false // 代码块显示行号
+        lineNumbers: true // 代码块显示行号
     },
     plugins: ['permalink-pinyin', ['autobar', {'pinyinNav': true}]],
     themeConfig: {
