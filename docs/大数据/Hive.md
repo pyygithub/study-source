@@ -181,7 +181,7 @@ Hive是基于Hadoop的一个数据仓库工具，可以将结构化的数据文�
 
   良好的容错性，节点出现问题SQL仍可完成执行。 
 
-### Hive架构
+### Hive 架构
 
 ![](./img/hive_jiagou.png)
 
@@ -199,7 +199,7 @@ Hive是基于Hadoop的一个数据仓库工具，可以将结构化的数据文�
 
    
 
-### Hive与Hadoop的关系
+### Hive 与 Hadoop 的关系
 
 Hive利用HDFS存储数据，利用MapReduce查询分析数据
 
@@ -207,7 +207,7 @@ Hive利用HDFS存储数据，利用MapReduce查询分析数据
 
 
 
-### **Hive**与传统数据库对比 
+### **Hive **与传统数据库对比 
 
 hive 用于海量数据的离线数据分析 
 
@@ -215,14 +215,14 @@ hive 用于海量数据的离线数据分析
 
 总结：hive具有sql数据库的外表，但应用场景完全不同，hive只适合用来做批量数据统计分析 。
 
-## Hive安装和环境配置
+## Hive 安装和环境配置
 
 1. 手动安装：自行Google
 2. CDH安装：自行Google
 
 
 
-### Hive的三种连接方式
+### Hive 的三种连接方式
 
 1. 第一种交互方式 **bin/hive**
 
@@ -276,9 +276,7 @@ hive 用于海量数据的离线数据分析
 
    
 
-
-
-## **Hive**的基本操作
+## **Hive** 数据库操作
 
 ### 创建数据库 
 
@@ -287,5 +285,1086 @@ create database if not exists myhive;
 use myhive;
 ```
 
+hive的表存放位置模式是由hive-site.xml当中的一个属性指定的
+
+```xml
+  <property>
+	<name>hive.metastore.warehouse.dir</name
+    <value>/user/hive/warehouse</value>
+  </property>
+```
+
+### 创建数据库并指定位置
+
+```sql
+create database myhive2 location '/myhive2'
+```
+
+### 修改数据库 
+
+可以使用alter database 命令来修改数据库的一些属性。但是数据库的元数据信息是不可更改的，包括
+
+数据库的名称以及数据库所在的位置 
+
+```sql
+alter database myhive2 set dbproperties('createtime'='20180611');
+```
+
+### 查看数据库详细信息 
+
+查看数据库基本信息
+
+```sql
+desc database myhive2;
+```
+
+查看数据库更多详细信息
+
+```sql
+desc database extended myhive2;
+```
+
+### 删除数据库 
+
+删除一个空数据库，如果数据库下面有数据表，那么就会报错
+
+```sql
+drop database myhive2;
+```
+
+强制删除数据库，包含数据库下面的表一起删除
+
+```sql
+drop database myhive cascade; # 不要执行了
+```
 
 
+
+## Hive表操作
+
+
+
+### Hive表创建语法 
+
+```sql
+create [external] table [if not exists] table_name (
+    col_name data_type [comment '字段描述信息']
+    col_name data_type [comment '字段描述信息'])
+    [comment '表的描述信息']
+    [location '指定表的路径']
+    [partitioned by (col_name data_type,...)]
+    [clustered by (col_name,col_name,...)]
+    [sorted by (col_name [asc|desc],...) into num_buckets buckets]
+    [row format row_format]
+    [location location_path]
+```
+
+说明：
+
+1. CREATE TABLE 创建一个指定名字的表。如果相同名字的表已经存在，则抛出异常；用户可以用IF NOT EXISTS 选项来忽略这个异常。 
+
+2. EXTERNAL 关键字可以让用户创建一个外部表，在建表的同时指定一个指向实际数据的路径 （LOCATION），Hive 创建内部表时，会将数据移动到数据仓库指向的路径；若创建外部表，仅记录数据所在的路径，不对数据的位置做任何改变。在删除表的时候，内部表的元数据和数据会被一起删除，而外部表只删除元数据，不删除数据。 
+
+3. LIKE 允许用户复制现有的表结构，但是不复制数据。 
+
+4. ROW FORMAT DELIMITED [FIELDS TERMINATED BY char] [COLLECTION ITEMS TERMINATED BY char] [MAP KEYS TERMINATED BY char] [LINES TERMINATED BY char] | SERDE serde_name [WITH SERDEPROPERTIES (property_name=property_value, property_name=property_value, ...)] 
+
+   用户在建表的时候可以自定义 SerDe 或者使用自带的 SerDe。如果没有指定 ROW FORMAT 或者 ROW FORMAT DELIMITED，将会使用自带的 SerDe。在建表的时候，用户还需要为表指定列，用户在指定表的列的同时也会指定自定义的 SerDe，Hive通过 SerDe 确定表的具体的列的数据。 
+
+   hive 默认的字段分隔符为ascii码的控制符\001,建表的时候用fields terminated by '\001',如果要测试的话，造数据在vi 打开文件里面，用ctrl+v然后再ctrl+a可以输入这个控制符\001。按顺序，\002的输入方式为ctrl+v,ctrl+b。以此类推。
+
+5. STORED AS 
+
+   SEQUENCEFILE|TEXTFILE|RCFILE 
+
+   如果文件数据是纯文本，可以使用 STORED AS TEXTFILE。如果数据需要压缩，使用 STORED AS SEQUENCEFILE。 
+
+6. PARTITIONED BY
+
+   分区，一个表可以拥有一个或者多个分区，每个分区以文件夹的形式单独存在表文件夹的目录下。
+
+7. CLUSTERED BY
+
+   对于每一个表（table）或者分区， Hive可以进一步组织成桶，也就是说桶是更为细粒度的数据范 
+
+   围划分。Hive也是 针对某一列进行桶的组织。Hive采用对列值哈希，然后除以桶的个数求余的方 
+
+   式决定该条记录存放在哪个桶当中。 
+
+   把表（或者分区）组织成桶（Bucket）有两个理由： 
+
+   1. 获得更高的查询处理效率。桶为表加上了额外的结构，Hive 在处理有些查询时能利用这个结构。具体而言，连接两个在（包含连接列的）相同列上划分了桶的表，可以使用 Map 端连接 （Map-side join）高效的实现。比如JOIN操作。对于JOIN操作两个表有一个相同的列，如果对这两个表都进行了桶操作。那么将保存相同列值的桶进行JOIN操作就可以，可以大大较少JOIN的数据量。 
+
+   2. 使取样（sampling）更高效。在处理大规模数据集时，在开发和修改查询的阶段，如果能在数据集的一小部分数据上试运行查询，会带来很多方便。 
+
+### 管理表的操作
+
+#### 建表初体验
+
+```sql
+use myhive; 
+create table stu(id int,name string); insert into stu values (1,"zhangsan"); 
+select * from stu;
+```
+
+**Hive**建表时候的字段类型
+
+https://cwiki.apache.org/conflfluence/display/Hive/LanguageManual+Types
+
+基本数据类型
+
+| Hive数据类型 | Java数据类型 | 长度   | 例子         |
+| ------------ | --------  | ------- |--------- |
+| TINYINT      | byte         | 1byte有符号整数                                      | 20                                   |
+| SMALINT      | short        | 2byte有符号整数                                      | 20                                   |
+| INT          | int          | 4byte有符号整数                                      | 20                                   |
+| BIGINT       | long         | 8byte有符号整数                                      | 20                                   |
+| BOOLEAN      | boolean      | 布尔类型，true或者false                              | TRUE FALSE                           |
+| FLOAT        | float        | 单精度浮点数                                         | 3.14159                              |
+| DOUBLE       | double       | 双精度浮点数                                         | 3.14159                              |
+| STRING       | string       | 字符系列。可以指定字符集。可以使用单引号或者双引号。 | ‘now is the time’ “for all good men” |
+| TIMESTAMP    |              | 时间类型                                             |                                      |
+| BINARY       |              | 字节数组                                             |                                      |
+
+【注】：对于Hive的string类型就相当于数据库中的varchar类型，该类型是一个可变的字符串，但是它不能声明存储字符长度的限制，理论上它可以存储2GB的字符数。
+
+集合数据类型
+
+| 数据类型 | 描述                                                         | 语法示例 |
+| -------- | ------------------------------------------------------------ | -------- |
+| STRUCT   | 和c语言中的struct类似，都可以通过“点”符号访问元素内容。例如，如果某个列的数据类型是STRUCT{first STRING, last STRING},那么第1个元素可以通过字段.first来引用。 | struct() |
+| MAP      | MAP是一组键-值对元组集合，使用数组表示法可以访问数据。例如，如果某个列的数据类型是MAP，其中键->值对是’first’->’John’和’last’->’Doe’，那么可以通过字段名[‘last’]获取最后一个元素 | map()    |
+| ARRAY    | 数组是一组具有相同类型和名称的变量的集合。这些变量称为数组的元素，每个数组元素都有一个编号，编号从零开始。例如，数组值为[‘John’, ‘Doe’]，那么第2个元素可以通过数组名[1]进行引用。 | Array()  |
+
+【注】：Array、Map和Java中的Array、Map类似；Struct和C语言中的Struct类似，它封装了一个命名字段集合，复杂数据类型允许任意层次 的嵌套。
+
+【案例】：
+
+假设某表有如下一行，我们用JSON格式来表示其数据结构。在Hive下访问的格式为
+
+```json
+{
+    "name": "songsong",
+    "friends": ["bingbing" , "lili"] ,       //列表Array,
+    "children": {                      //键值Map,
+        "xiao song": 18 ,
+        "xiaoxiao song": 19
+    }
+    "address": {                      //结构Struct,
+        "street": "hui long guan" ,
+        "city": "beijing"
+    }
+}
+```
+
+#### 创建表并指定字段之间的分隔符 
+
+```sql
+create table if not exists stu2(id int ,name string) 
+row format delimited fields terminated by '\t'
+```
+
+#### 根据查询结果创建表 
+
+```sql
+create table stu3 as select * from stu2; # 通过复制表结构和表内容创建新表
+```
+
+#### 根据已经存在的表结构创建表 
+
+```sql
+create table stu4 like stu2;
+```
+
+#### 查询表的类型
+
+```sql
+desc formatted stu2;
+```
+
+### 外部表的操作
+
+#### 外部表说明
+
+外部表因为是指定其他的hdfs路径的数据加载到表当中来，所以hive表会认为自己不完全独占这份数据，所以删除hive表的时候，数据仍然存放在hdfs当中，不会删掉
+
+#### 管理表和外部表的使用场景 
+
+每天将收集到的网站日志定期流入HDFS文本文件。在外部表（原始日志表）的基础上做大量的统计分析，用到的中间表、结果表使用内部表存储，数据通过SELECT+INSERT进入内部表
+
+#### 操作案例
+
+分别创建老师与学生表外部表，并向表中加载数据
+
+- 创建老师表
+
+  ```sql
+  create external table teacher (t_id string,t_name string) row format delimited fields terminated by '\t'
+  ```
+
+- 创建学生表 
+
+  ```sql
+  create external table student (s_id string,s_name string,s_birth string , s_sex string ) row format delimited fields terminated by '\t'
+  ```
+
+- 加载数据(本地)
+
+  ```sql
+  load data local inpath '/export/servers/hivedatas/student.csv' into table student;
+  ```
+
+  student.csv
+
+  ```csv
+  01	赵雷	1990-01-01	男
+  02	钱电	1990-12-21	男
+  03	孙风	1990-05-20	男
+  04	李云	1990-08-06	男
+  05	周梅	1991-12-01	女
+  06	吴兰	1992-03-01	女
+  07	郑竹	1989-07-01	女
+  08	王菊	1990-01-20	女
+  ```
+
+- 加载数据并覆盖已有数据
+
+  ```sql
+  load data local inpath '/export/servers/hivedatas/student.csv' overwrite into table student;
+  ```
+
+  注：执行完load 后，本地 的/hivedatas/teacher.csv文件会被复制到hive数据库目录中。
+
+- 从**hdfs**文件系统向表中加载数据（需要提前将数据上传到**hdfs**文件系统）
+
+  ```sql
+  #cd /export/servers/hivedatas 
+  #hdfs dfs -mkdir -p /hivedatas 
+  #hdfs dfs -put techer.csv /hivedatas/ 
+  #hive> load data inpath '/hivedatas/techer.csv' into table teacher; 
+  ```
+
+  注：执行完load 后，hdfs 的/hivedatas/teacher.csv文件会被移动（剪切）到hive数据库目录中。
+
+  teacher.csv
+
+  ```cvs
+  01	张三
+  02	李四
+  03	王五
+  ```
+
+### 分区表
+
+在大数据中，最常用的一种思想就是分治，我们可以把大的文件切割划分成一个个的小的文件，这样每次操作一个小的文件就会很容易了，同样的道理，在hive当中也是支持这种思想的，就是我们可以把大的数据，按照每天，或者每小时进行切分成一个个的小的文件，这样去操作小的文件就会容易得多了 。
+
+#### 创建分区表语法
+
+```sql
+create table score(s_id string,c_id string, s_score int) partitioned by (month string) row format delimited fields terminated by '\t'
+```
+
+#### 创建一个表带多个分区 
+
+```sql
+create table score2 (s_id string,c_id string, s_score int) partitioned by (year string,month string,day string) row format delimited fields terminated by '\t'
+```
+
+#### 加载数据到分区表中 
+
+```sql
+load data local inpath '/export/servers/hivedatas/score.csv' into table score partition (month='202003');
+```
+
+注：上面操作会将表文件数据加载到hive数据库目录 `month=202003`文件夹中
+
+score.csv
+
+```
+01	01	80
+01	02	90
+01	03	99
+02	01	70
+02	02	60
+02	03	80
+03	01	80
+03	02	80
+03	03	80
+04	01	50
+04	02	30
+04	03	20
+05	01	76
+05	02	87
+06	01	31
+06	03	34
+07	02	89
+07	03	98
+```
+
+#### 加载数据到多分区表中
+
+```sql
+load data local inpath '/export/servers/hivedatas/score.csv' into table score2 partition(year='2020',month='03',day='01');
+```
+
+注：上面操作会将表文件数据加载  `/year=2020/month=03/day=01 `文件夹中
+
+多分区表联合查询(使用 union all ) 
+
+#### 多分区表联合查询(使用 union all ) 
+
+```sql
+select * from score where month = '202002' union all select * from score where month = '202003';
+```
+
+#### 查看分区 
+
+```sql
+show partitions score;
+```
+
+#### 添加一个分区 
+
+``` sql
+alter table score add partition(month='202003'); 
+```
+
+#### 删除分区 
+
+```sql
+alter table score drop partition(month = '202003')
+```
+
+
+
+### 分桶表 
+
+将数据按照指定的字段进行分成多个桶中去，说白了就是将数据按照字段进行划分，可以将数据按照字段划分到多个文件当中去 。
+
+#### 开启 Hive 的分桶功能 
+
+```shell
+set hive.enforce.bucketing=true; 
+```
+
+#### 设置 Reduce 个数
+
+```shell
+set mapreduce.job.reduces=3; # 默认-1：不限制
+```
+
+#### 创建桶表 
+
+```sql
+create table course (c_id string,c_name string,t_id string) clustered by(c_id) into 3 buckets row format delimited fields terminated by '\t'
+```
+
+桶表的数据加载，由于通标的数据加载通过 hdfs dfs -put 文件或者通过 load data 均不好使，只能通过 insert overwrite 
+
+创建普通表，并通过insert overwrite的方式将普通表的数据通过查询的方式加载到桶表当中去 
+
+创建普通表（中间表）
+
+```sql
+create table course_common (c_id string,c_name string,t_id string) row format delimited fields terminated by '\t'
+```
+
+普通表中加载数据
+
+```sql
+load data local inpath '/export/servers/hivedatas/course.csv' into table course_common;
+```
+
+course.csv
+
+```
+01	语文	02
+02	数学	01
+03	英语	03
+```
+
+通过insert overwrite给桶表中加载数据
+
+```sql
+insert overwrite table course select * from course_common cluster by(c_id);
+```
+
+注：最终在hive数据库目录中文件会被分割为三份
+
+![](./img/cluste.jpg)
+
+### 修改表 
+
+#### 重命名
+
+基本语法： 
+
+```sql
+alter table old_table_name rename to new_table_name; 
+```
+
+把表score4修改成score5 
+
+```sql
+alter table score4 rename to score5
+```
+
+#### 增加**/**修改列信息 
+
+- 查询表结构
+
+  ```sql
+  desc score5; 
+  ```
+
+- 添加列
+
+  ```sql
+  alter table score5 add columns (mycol string, mysco string);
+  ```
+
+- 更新列 
+
+  ```sql
+  alter table score5 change column mysco mysconew int;
+  ```
+
+  
+
+### 删除表 
+
+```sql
+drop table score5;
+```
+
+
+
+### **hive **表中加载数据
+
+#### 直接向分区表中插入数据
+
+```sql
+create table score3 like score;
+insert into table score3 partition(month ='202003') values ('001','002','100');
+```
+
+#### 通过查询插入数据
+
+通过load方式加载数据
+
+```sql
+load data local inpath '/export/servers/hivedatas/score.csv' overwrite into table score partition(month ='202003');
+```
+
+通过查询方式加载数据
+
+```sql
+create table score4 like score; insert overwrite table score4 partition(month = '202003') select s_id,c_id,s_score from score;
+```
+
+
+
+## **Hive** 查询语法 
+
+### **SELECT** 
+
+```sql
+SELECT [ALL | DISTINCT] select_expr, select_expr, ... 
+    FROM table_reference 
+    [WHERE where_condition] 
+    [GROUP BY col_list [HAVING condition]] 
+    [CLUSTER BY col_list | [DISTRIBUTE BY col_list] 
+    [SORT BY| ORDER BY col_list] 
+    LIMIT number]
+```
+
+1. order by 会对输入做**全局排序**，因此只有一个reducer，会导致当输入规模较大时，需要较长的计算时间。 
+
+2. sort by **不是全局排序**，其在数据进入reducer前完成排序。因此，如果用sort by进行排序，并且设置 mapred.reduce.tasks>1，则sort by只保证每个reducer的输出有序，不保证全局有序。 
+
+3. distribute by(字段)根据指定的字段将数据分到不同的reducer，且分发算法是hash散列。 
+
+4. cluster by(字段) 除了具有distribute by的功能外，还会对该字段进行排序。 ---> distribute by + sort by 因此，如果分桶和sort字段是同一个时，此时， cluster by = distribute by + sort b
+
+
+
+分桶表的作用：最大的作用是用来提高join操作的效率； 
+
+思考这个问题： select a.id,a.name,b.addr from a join b on a.id = b.id; 
+
+如果a表和b表已经是分桶表，而且分桶的字段是id字段 做这个join操作时，还需要全表做笛卡尔积吗? 
+
+
+
+### 查询语法
+
+#### 全表查询 
+
+```sql
+select * from score; 
+```
+
+#### 选择特定列 
+
+```sql
+select s_id ,c_id from score;
+```
+
+#### 列别名 
+
+1）重命名一个列。 
+
+2）便于计算。 
+
+3）紧跟列名，也可以在列名和别名之间加入关键字‘AS
+
+```sql
+select s_id as myid ,c_id from score;
+```
+
+### 常用函数 
+
+#### 求总行数（count）
+
+```sql
+select count(1) from score; 
+```
+
+#### 求分数的最大值（max） 
+
+```sql
+select max(s_score) from score; 
+```
+
+#### 求分数的最小值（min） 
+
+```sql
+select min(s_score) from score; 
+```
+
+#### 求分数的总和（sum） 
+
+```sql
+select sum(s_score) from score; 
+```
+
+#### 求分数的平均值（avg） 
+
+```sql
+select avg(s_score) from score; 
+```
+
+
+
+### LIMIT 语句 
+
+典型的查询会返回多行数据。LIMIT子句用于限制返回的行数。 
+
+```sql
+select * from score limit 3;
+```
+
+
+
+### WHERE 语句 
+
+1. 使用WHERE 子句，将不满足条件的行过滤掉。 
+
+2. WHERE 子句紧随 FROM 子句。 
+
+3. 案例实操 
+
+   查询出分数大于60的数据
+
+   ```sql
+   select * from score where s_score > 60;
+   ```
+
+#### 关系运算符
+
+| 运算符        | 操作         | 描述                                                         |
+| :------------ | :----------- | :----------------------------------------------------------- |
+| A = B         | 所有基本类型 | 如果表达A等于表达B，结果TRUE ，否则FALSE。                   |
+| A != B        | 所有基本类型 | 如果A不等于表达式B表达返回TRUE ，否则FALSE。                 |
+| A < B         | 所有基本类型 | TRUE，如果表达式A小于表达式B，否则FALSE。                    |
+| A <= B        | 所有基本类型 | TRUE，如果表达式A小于或等于表达式B，否则FALSE。              |
+| A > B         | 所有基本类型 | TRUE，如果表达式A大于表达式B，否则FALSE。                    |
+| A >= B        | 所有基本类型 | TRUE，如果表达式A大于或等于表达式B，否则FALSE。              |
+| A IS NULL     | 所有类型     | TRUE，如果表达式的计算结果为NULL，否则FALSE。                |
+| A IS NOT NULL | 所有类型     | FALSE，如果表达式A的计算结果为NULL，否则TRUE。               |
+| A LIKE B      | 字符串       | TRUE，如果字符串模式A匹配到B，否则FALSE。                    |
+| A RLIKE B     | 字符串       | NULL，如果A或B为NULL；TRUE，如果A任何子字符串匹配Java正则表达式B；否则FALSE。 |
+| A REGEXP B    | 字符串       | 等同于RLIKE.                                                 |
+
+- 查询分数等于80的所有的数据
+
+  ```sql
+  select * from score where s_score = 80; 
+  ```
+
+- 查询分数在80到100的所有数据
+
+  ```sql
+  select * from score where s_score between 80 and 100; 
+  ```
+
+- 查询成绩为空的所有数据
+
+  ```sql
+  select * from score where s_score is null;
+  ```
+
+- 查询成绩是80和90的数据
+
+  ```sql
+  select * from score where s_score in(80,90);
+  ```
+
+#### **LIKE** 和 **RLIKE** 
+
+- 使用LIKE运算选择类似的值 
+
+- 选择条件可以包含字符或数字:
+
+  % 代表零个或多个字符(任意个字符)。 
+
+  _ 代表一个字符。 
+
+- RLIKE 子句是Hive中这个功能的一个扩展，其可以通过Java的正则表达式这个更强大的语言来指定匹配条件。
+
+案例实操 :
+
+1. 查找以8开头的所有成绩 
+
+   ```sql
+   select * from score where s_score like '8%'; 
+   ```
+
+2. 查找第二个数值为9的所有成绩数据
+
+   ```sql
+   select * from score where s_score like '_9%'; 
+   ```
+
+3. 查找成绩中含9的所有成绩数据
+
+   ```sql
+   select * from score where s_score rlike '[9]'; #等价于like '%9%'
+   ```
+
+   
+
+#### 逻辑运算符
+
+| 运算符   | 操作    | 描述                                      |
+| :------- | :------ | :---------------------------------------- |
+| A AND B  | boolean | TRUE，如果A和B都是TRUE，否则FALSE。       |
+| A && B   | boolean | 类似于 A AND B.                           |
+| A OR B   | boolean | TRUE，如果A或B或两者都是TRUE，否则FALSE。 |
+| A \|\| B | boolean | 类似于 A OR B.                            |
+| NOT A    | boolean | TRUE，如果A是FALSE，否则FALSE。           |
+| !A       | boolean | 类似于 NOT A.                             |
+
+- 查询成绩大于80，并且s_id是01的数据
+
+  ```sql
+  select * from score where s_score >80 and s_id = '01'; 
+  ```
+
+- 查询成绩大于80，或者s_id 是01的数 
+
+  ```sql
+  select * from score where s_score > 80 or s_id = '01'; 
+  ```
+
+- 查询s_id 不是 01和02的学生 
+
+  ```sql
+  select * from score where s_id not in ('01','02')
+  ```
+
+### 分组 
+
+#### **GROUP BY** 语句
+
+GROUP BY语句通常会和聚合函数一起使用，按照一个或者多个列队结果进行分组，然后对每个组执行聚合操作。 
+
+案例实操： 
+
+- 计算每个学生的平均分数 
+
+  ```sql
+  select s_id ,avg(s_score) from score group by s_id; 
+  ```
+
+- 计算每个学生最高成绩 
+
+  ```sql
+  select s_id ,max(s_score) from score group by s_id; 
+  ```
+
+#### **HAVING** 语句 
+
+- having 与 where不同点 
+
+  1. where针对表中的列发挥作用，查询数据；having针对查询结果中的列发挥作用，筛选数据。 
+
+  2. where后面不能写分组函数，而having后面可以使用分组函数。 
+
+  3. having只用于group by分组统计语句。 
+
+- 案例实操：
+
+  - 求每个学生的平均分数 
+
+    ```sql
+    select s_id ,avg(s_score) from score group by s_id;
+    ```
+
+  - 求每个学生平均分数大于85的人 
+
+    ```sql
+    select s_id ,avg(s_score) avgscore from score group by s_id having avgscore > 85;
+    ```
+
+    
+
+### **JOIN** 语句 
+
+#### 等值 **JOIN** 
+
+Hive支持通常的SQL JOIN语句，但是只支持等值连接，不支持非等值连接。 
+
+案例操作: 查询分数对应的姓名 
+
+```sql
+SELECT s.s_id,s.s_score,stu.s_name,stu.s_birth FROM score s LEFT JOIN student stu ON s.s_id = stu.s_id;
+```
+
+#### 内连接 
+
+内连接：只有进行连接的两个表中都存在与连接条件相匹配的数据才会被保留下来。 
+
+```sql
+select * from techer t inner join course c on t.t_id = c.t_id;
+```
+
+#### 左外连接
+
+左外连接：JOIN操作符左边表中符合WHERE子句的所有记录将会被返回。 查询老师对应的课程 
+
+```sql
+select * from techer t left join course c on t.t_id = c.t_id;
+```
+
+#### 右外连接 
+
+右外连接：JOIN操作符右边表中符合WHERE子句的所有记录将会被返回。 
+
+````sql
+select * from teacher t right join course c on t.t_id = c.t_id; 
+````
+
+#### 多表连接 
+
+注意：连接 n个表，至少需要n-1个连接条件。例如：连接三个表，至少需要两个连接条件。 
+
+多表连接查询，查询老师对应的课程，以及对应的分数，对应的学生 
+
+```sql
+select * from teacher t 
+left join course c on t.t_id = c.t_id 
+left join score s on s.c_id = c.c_id 
+left join student stu on s.s_id = stu.s_id;
+```
+
+大多数情况下，Hive会对每对JOIN连接对象启动一个MapReduce任务。本例中会首先启动一个MapReduce job对表 techer和表course进行连接操作，然后会再启动一个MapReduce job将第一个MapReduce job的输出和score;进行连接操作。 
+
+
+
+### 排序 
+
+#### 全局排序 
+
+Order By：全局排序，只能有一个reduce 
+
+1. 使用 ORDER BY 子句排序 
+
+   ASC（ascend）: 升序（默认） 
+
+   DESC（descend）: 降序 
+
+2. ORDER BY 子句在SELECT语句的结尾。 
+
+案例实操 
+
+1. 查询学生的成绩，并按照分数降序排列 
+
+   ```sql
+   SELECT * FROM student s LEFT JOIN score sco ON s.s_id = sco.s_id ORDER BY sco.s_score DESC; 
+   ```
+
+2. 查询学生的成绩，并按照分数升序排列 
+
+   ```sql
+   SELECT * FROM student s LEFT JOIN score sco ON s.s_id = sco.s_id ORDER BY sco.s_score asc; 
+   ```
+
+#### 按照别名排序 
+
+按照分数的平均值排序
+
+```sql
+select s_id ,avg(s_score) avg from score group by s_id order by avg;
+```
+
+#### 多个列排序
+
+按照学生id和平均成绩进行排序 
+
+```sql
+select s_id ,avg(s_score) avg from score group by s_id order by s_id,avg; 
+```
+
+#### 每个**MapReduce**内部排序（**Sort By**）局部排序 
+
+Sort By：每个MapReduce内部进行排序，对全局结果集来说不是排序。 
+
+1. 设置reduce个数 
+
+   ```shell
+   #hive> set mapreduce.job.reduces=3; 
+   ```
+
+2. 查看设置reduce个数 
+
+   ``` shell
+   #hive> set mapreduce.job.reduces;
+   ```
+
+3. 查询成绩按照成绩降序排列 
+
+   ```sql
+   select * from score sort by s_score; 
+   ```
+
+4. 将查询结果导入到文件中（按照成绩降序排列） 
+
+   ```sql
+   insert overwrite local directory '/export/servers/hivedatas/sort' select * from score sort by s_score;
+   ```
+
+
+
+#### 分区排序（**DISTRIBUTE BY**）
+
+Distribute By：类似MR中partition，进行分区，结合sort by使用。 
+
+注意，Hive要求DISTRIBUTE BY语句要写在SORT BY语句之前。 
+
+对于distribute by进行测试，一定要分配多reduce进行处理，否则无法看到distribute by的效果。 
+
+案例实操：先按照学生id进行分区，再按照学生成绩进行排序。 
+
+1. 设置reduce的个数，将我们对应的s_id划分到对应的reduce当中去 
+
+   ```shell
+   #hive> set mapreduce.job.reduces=7; 
+   ```
+
+2. 通过distribute by 进行数据的分区 
+
+   ```sql
+   insert overwrite local directory '/export/servers/hivedatas/sort' select * from score distribute by s_id sort by s_score;
+   ```
+
+   
+
+
+#### 分桶排序（**CLUSTER BY** ）
+
+当distribute by和sort by字段相同时，可以使用cluster by方式。cluster by除了具有distribute by的功能外还兼具sort by的功能。但是排序只能是倒序排序，不能指定排序规则为ASC 或者DESC。 
+
+以下两种写法等价 
+
+```sql
+select * from score cluster by s_id; 
+select * from score distribute by s_id sort by s_id; 
+```
+
+
+
+## **Hive** 函数
+
+### 内置函数
+
+内容较多，见《Hive官方文档》 https://cwiki.apache.org/confluence/display/Hive/LanguageManual+UDF 
+
+#### 查看系统自带的函数 
+
+```shell
+#hive> show functions; 
+```
+
+#### 显示自带的函数的用法 
+
+```shell
+#hive> desc function upper; 
+```
+
+#### 详细显示自带的函数的用法 
+
+```shell
+#hive> desc function extended upper; 
+```
+
+#### 常用内置函数 
+
+- 字符串连接函数： concat 
+
+  ```sql
+  select concat('abc','def’,'gh'); 
+  ```
+
+- 带分隔符字符串连接函数： concat_ws 
+
+  ```sql
+  select concat_ws(',','abc','def','gh');
+  ```
+
+-  cast类型转换
+
+  ```sql
+  select cast(1.5 as int);
+  ```
+
+- get_json_object(json 解析函数，用来处理json，必须是json格式) 
+
+  ```sql
+  select get_json_object('{"name":"jack","age":"20"}','$.name');
+  ```
+
+-  URL解析函数 
+
+  ```sql
+  select parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'HOST'); 
+  #结果：facebook.com
+  ```
+
+  ```sql
+  select parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'PATH'); 
+  #结果：/path1/p.php
+  ```
+
+  ```sql
+  select parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'QUERY'); 
+  #结果：K1=V1&K2=V2
+  ```
+
+  ```sql
+  select parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'QUERY','k1'); 
+  #结果：V1
+  ```
+
+  
+
+### 自定义函数
+
+1. Hive 自带了一些函数，比如：max/min等，但是数量有限，自己可以通过自定义UDF来方便的扩展。 
+
+2. 当Hive提供的内置函数无法满足你的业务处理需要时，此时就可以考虑使用用户自定义函数（UDF：user-defifined function）。 
+
+3. 根据用户自定义函数类别分为以下三种：upper -->my_upper 
+   - UDF（User-Defifined-Function）
+     - 一进一出 
+
+   - UDAF（User-Defifined Aggregation Function） 
+
+     - 聚集函数，多进一出 
+
+     - 类似于： count / max / min 
+
+   - UDTF（User-Defifined Table-Generating Functions） 
+
+     - 一进多出 
+
+     - 如 lateral view explore() 
+
+4. 官方文档地址 https://cwiki.apache.org/confluence/display/Hive/HivePlugins 
+
+5. 编程步骤： 
+   1）继承org.apache.hadoop.hive.ql.UDF 
+
+   2）需要实现evaluate函数；evaluate函数支持重载； 
+
+6. 注意事项 
+
+   1）UDF必须要有返回类型，可以返回null，但是返回类型不能为void； 
+
+   2）UDF中常用Text/LongWritable等类型，不推荐使用java类型； 
+
+### **UDF** 开发实例
+
+#### **Step 1** 创建 **Maven** 工程
+
+```xml
+    <!-- https://mvnrepository.com/artifact/org.apache.hive/hive-exec --> 
+    <dependency> 
+        <groupId>org.apache.hive</groupId> 
+        <artifactId>hive-exec</artifactId> 
+        <version>3.1.1</version> 
+    </dependency> 
+    <!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-common --> 	
+    <dependency> 
+        <groupId>org.apache.hadoop</groupId> 
+        <artifactId>hadoop-common</artifactId> 
+        <version>3.1.1</version> 
+        </dependency> 
+    </dependencies> 
+```
+
+#### **Step 2** 开发 **Java** 类集成 **UDF** 
+
+```java
+public class MyUDF extends UDF{ 
+    public Text evaluate(final Text str){ 
+        String tmp_str = str.toString(); 
+        if(str != null && !tmp_str.equals("")){ 
+            String str_ret = tmp_str.substring(0, 1).toUpperCase()+tmp_str.substring(1); 
+            return new Text(str_ret); 
+        }
+        return new Text(""); 
+    } 
+}
+```
+
+#### **Step 3** 项目打包，并上传到**hive**的**lib**目录下
+
+![](./img/udf.png)
+
+#### Step 4添加**jar**包 
+
+重命名我们的jar包名称
+
+```shell
+#cd /export/servers/apache-hive-3.1.1-bin/lib 
+#mv original-day_05_hive_udf-1.0-SNAPSHOT.jar myudf.jar 
+```
+
+hive的客户端添加我们的jar包 
+
+```shell
+#hive> add jar /export/servers/apache-hive-3.1.1-bin/lib/udf.jar;
+```
+
+#### **Step 5** 设置函数与我们的自定义函数关联 
+
+```sql
+create temporary function my_upper as 'cn.itcast.udf.ItcastUDF';
+```
+
+#### **Step 6** 使用自定义函数
+
+```shell
+select my_upper('abc');
+```
