@@ -92,7 +92,9 @@ HBASE相比于其他nosql数据库(mongodb、redis、cassendra、hazelcast)的�
    - 一个key可有有多个版本的值
    - 时间戳作为版本
 
-## 4. HBase 整体工作机制示意图
+## 4. HBase 整体工作机制
+
+### 4.1 工作机制示意图
 
 ![](./img/hbase_jz.png)
 
@@ -104,11 +106,11 @@ Hbase集群中有两个角色
 
 region server负责数据的逻辑处理（增删改查），**region server对数据的操作是不经过master**。某一个瞬间master挂了，regionserver还是可以正常服务的，但是一定时间之后，万一某一个regionserver挂了，该regionserver负责的任务得不到重新分配，就会出问题。
 
-### 4.1 存储问题（分散存储）
+### 4.2 存储问题（分散存储）
 
 按照region划分范围存储（region目录还细分为列族目录，列族目录下才存放具体的文件）
 
-### 4.2 查询问题（分布式：分任务查询）
+### 4.3 查询问题（分布式：分任务查询）
 
 HBase底层文件系统是HDFS，HBase中的表最终也会落地HDFS，那么Hbase的一张表可以很大很大，表中的数据不断的增加增加存储也是可以的，但是怎么查询呢？
 
@@ -125,6 +127,14 @@ HBase底层文件系统是HDFS，HBase中的表最终也会落地HDFS，那么Hb
   ​	需要**划分范围：**按照**行健范围**
 
 这样通过分任务之后就是一个**分布式系统。**不同的regionServer可以**并行**的去访问hdfs中的数据（表数据）**，**这样还有一个问题，若某一张表中的所有数据都存在同一个HDFS中的文件中，即使是负责同一张表的不同范围regionserver，大量的并行请求也会同时访问同一个hdfs文件，这会造成性能上的瓶颈，所以表中的数据在HDFS中是按照**region划分范围存储（region目录还细分为列族目录，列族目录下才存放具体的文件）**, 这样**同一个表的不同region范围的数据落地HDFS中不同的文件中**。否则会造成即是分了任务一个dataNode被频繁的访问。
+
+
+
+### 4.5 Hbase工作机制补充—regionserver数据管理
+
+首先在hbase的表中插入一些数据，然后来观察一下hdfs中存的数据，发现hdfs下并没有数据，但是scan明明可以查到数据的，这是怎么回事呢？
+
+![img](https://img2018.cnblogs.com/blog/1020536/201810/1020536-20181016094210414-521552116.png)
 
 
 
@@ -174,7 +184,7 @@ master是不会保存哪些region在哪些regionserver上的，否则就是有�
 
 
 
-### 4.3 服务器宕机问题（借助Zookeeper实现HA）
+### 4.4 服务器宕机问题（借助Zookeeper实现HA）
 
 **master对regionserver的监管，状态协调**
 
@@ -188,4 +198,19 @@ master是不会保存哪些region在哪些regionserver上的，否则就是有�
 
 **master HA**
 
-**状态信息记录在Zookeeper里。**master是无状态节点，standby 切换为 active状态，查看Zookeeper后，立马知道现在的集群是什么样子。
+**状态信息记录在Zookeeper里。**
+
+可以在集群中找任意一台机器启动一个备用的master，新启的这个master会处于backup状态
+
+## 5. 安装 HBase
+
+### 安装HBase
+
+HBase是Google Bigtable的开源实现，它利用Hadoop HDFS作为其文件存储系统，利用Hadoop MapReduce来处理HBase中的海量数据，利用Zookeeper作为协同服务。所以安装HBase之前还需要安装zookeeper和hdfs。
+
+
+
+如果是Apache hadoop就下载相应文件并修改配置文件安装。我用的是cloudera hadoop就直接在集群管理界面添加服务。
+
+![img](https:////upload-images.jianshu.io/upload_images/10086112-82374970c9ed6826.png?imageMogr2/auto-orient/strip|imageView2/2/w/1122/format/webp)
+
