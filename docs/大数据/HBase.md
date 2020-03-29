@@ -1,4 +1,4 @@
-# 一、HBase
+# HBase
 
 官网：http://hbase.apache.org
 
@@ -18,9 +18,9 @@ HBASE是一个**数据库**----可以提供数据的实时**随机读写**
 
 HBASE与mysql、oralce、db2、sqlserver等关系型数据库不同，它是一个NoSQL数据库（非关系型数据库）
 
-- Hbase的表模型与关系型数据库的表模型不同：
+Hbase的表模型与关系型数据库的表模型不同：
 
-- Hbase的表没有固定的字段定义；
+- Hbase的表没有固定的字段定义
 
 - Hbase的表中每行存储的都是一些key-value对
 
@@ -130,15 +130,9 @@ HBase底层文件系统是HDFS，HBase中的表最终也会落地HDFS，那么Hb
 
 
 
-### 4.5 Hbase工作机制补充—regionserver数据管理
-
-首先在hbase的表中插入一些数据，然后来观察一下hdfs中存的数据，发现hdfs下并没有数据，但是scan明明可以查到数据的，这是怎么回事呢？
-
-![img](https://img2018.cnblogs.com/blog/1020536/201810/1020536-20181016094210414-521552116.png)
 
 
-
-#### 4.2.1 客户端读写数据时的路由流程
+#### 4.3.1 客户端读写数据时的路由流程
 
 **问题描述**：客户端怎么知道他要访问的某个region在那一台regionserver上呢？
 
@@ -202,6 +196,58 @@ master是不会保存哪些region在哪些regionserver上的，否则就是有�
 
 可以在集群中找任意一台机器启动一个备用的master，新启的这个master会处于backup状态
 
+
+
+### 4.5 Hbase工作机制补充—regionserver数据管理
+
+首先在hbase的表中插入一些数据，然后来观察一下hdfs中存的数据，发现hdfs下并没有数据，但是scan明明可以查到数据的，这是怎么回事呢？
+
+![img](https://img2018.cnblogs.com/blog/1020536/201810/1020536-20181016094210414-521552116.png)
+
+scan可以查到数据。而上图hdfs中却没有数据文件。
+
+![](./img/hbase_scan.png)
+
+**其实：此时此刻的数据位于内存中。**
+
+![](./img/hbase_memory.png)
+
+#### 4.5.1 内存缓存热数据
+
+1. 每个region在内存中都对应分配一块缓存空间，memstore，但是memstore毕竟有限，不会将全部的数据都存入到内存中，还是有很大的数据是存在hdfs中的。当数据量很小的时候没有必要写入到hdfs文件中，这就解释了为什么上述hdfs中没有文件数据。
+
+   上述用户插入的数据都保存在了内存中，这样速度会比存入hdfs中快很多，但是又不能吧全部数据都存入到内存中，内存中只会保存一些**热数据【刚刚被访问过的，刚刚被插入的数据】**。
+
+   如果有人找regionserver查数据是，regionserver内存中没有该数据，就会去hdfs中查找，找到之后作为热数据，然后缓存在内存中，超过一段时间没有人访问就不是热数据了，就不会继续保存在内存中。
+
+2. 数据保存在内存中就有风险，万一没有来的落地hdfs，**宕机**了，内存中的数据会丢失，怎么办？
+
+   解决方案：regionserver一方面在自己内存中写数据，一方面在hdfs中写日志，一旦宕机后，master找来替换机器后，该机器会读取日志信息，还原内存中的数据。
+
+![](./img/hbase_hdfs_log1.png)
+
+![](./img/hbase_hdfs_log2.png)
+
+![](./img/hbase_hdfs_log3.png)
+
+ **总结：**
+
+　　**1、热数据存储**
+
+　　**2、日志记录**
+
+#### 4.5.2 持久化到hdfs
+
+1. 当内存中的数据插满时候，数据会持久化到hdfs中
+
+2. 当hbase退出时候，数据也会持久化到hdfs中
+
+
+
+
+
+
+
 ## 5. 安装 HBase
 
 ### 安装HBase
@@ -212,5 +258,490 @@ HBase是Google Bigtable的开源实现，它利用Hadoop HDFS作为其文件存�
 
 如果是Apache hadoop就下载相应文件并修改配置文件安装。我用的是cloudera hadoop就直接在集群管理界面添加服务。
 
-![img](https:////upload-images.jianshu.io/upload_images/10086112-82374970c9ed6826.png?imageMogr2/auto-orient/strip|imageView2/2/w/1122/format/webp)
+![](./img/cdh_hbase.png)
 
+
+
+## 6. HBase 客户端
+
+### 6.1 命令行客户端
+
+```shell
+#bin/hbase shell
+#hbase(main):001:0> list     // 查看表
+#hbase(main):002:0> status   // 查看集群状态
+#hbase(main):003:0> version  // 查看集群版本
+```
+
+进入命令行客户端，help查看都有哪些命令【命令分为不同的组别 ddl dml tools replication...】。
+
+#### 6.1.1 建表
+
+```shell
+create 't_user_info','base_info','extra_info'
+		表名      	列族名   		列族名
+```
+
+```shell
+hbase(main):004:0> create 't_user_info', 'base_info', 'extra_info'
+0 row(s) in 1.4210 seconds
+
+=> Hbase::Table - t_user_info
+```
+
+**查看HBase建表后的状态**
+
+![](./img/hbase_table1.png)
+
+**HDFS中的数据**
+
+![](./img/hbase_hdfs.png)
+
+![](./img/hbase_hdfs1.png)
+
+![](./img/hbase_hdfs2.png)
+
+#### 6.1.2 插入数据
+
+**put命令**
+
+**语法：**
+
+```shell
+put '表名','行健','列族:key','value'
+```
+
+```shell
+hbase(main):004:0> put 't_user_info','001','base_info:username', 'zhangsan'
+0 row(s) in 0.2250 seconds
+
+hbase(main):005:0> put 't_user_info', '001', 'base_info:age', '18'
+0 row(s) in 0.0180 seconds
+
+hbase(main):006:0> put 't_user_info', '001', 'base_info:sex', 'female'
+0 row(s) in 0.0250 seconds
+
+hbase(main):007:0> put 't_user_info', '001', 'extra_info:career', 'it_java'
+0 row(s) in 0.0150 seconds
+
+hbase(main):008:0> put 't_user_info', '002', 'base_info:username', 'lisi'
+0 row(s) in 0.0130 seconds
+```
+
+#### 6.1.3 查询数据方式一：get 单行查询
+
+语法：
+
+```shell
+-- 返回该行全部数据
+get '表名','行健'
+
+-- 返回该行指定列族：key的值
+get '表名','行健', '列族:key'
+```
+
+特性：**HBase会对 ' 列族：key ' 进行字典序排序**
+
+　　　**timestamp：是key的版本号**　
+
+```shell
+
+hbase(main):001:0> get 't_user_info', '001'
+COLUMN                       CELL
+ base_info:age               timestamp=1585464683099, value=18
+ base_info:sex               timestamp=1585464711338, value=female
+ base_info:username          timestamp=1585464658247, value=zhangsan
+ extra_info:career           timestamp=1585464797473, value=it_java
+4 row(s) in 0.2740 seconds
+
+hbase(main):002:0> get 't_user_info', '001', 'base_info:username'
+COLUMN                       CELL
+ base_info:username          timestamp=1585464658247, value=zhangsan
+1 row(s) in 0.0260 seconds
+
+```
+
+#### 6.1.4 查询数据方式二：scan 扫描
+
+**scan是全表扫描**
+
+特性：
+
+　　**1、先按照行健排序。**
+
+　　**2、同一行健，按照key的字典序排序。**
+
+```shell
+hbase(main):012:0> scan 't_user_info'
+ROW              COLUMN+CELL
+ 001             column=base_info:age, timestamp=1585464683099, value=18
+ 001             column=base_info:sex, timestamp=1585464711338, value=female
+ 001             column=base_info:username, timestamp=1585464658247, value=zhangsan
+ 001             column=extra_info:career, timestamp=1585464797473, value=it_java
+ 002             column=base_info:username, timestamp=1585464828257, value=lisi
+2 row(s) in 0.0190 seconds
+```
+
+#### 6.1.5 delete 删除一个kv数据
+
+```shell
+hbase(main):021:0> delete 't_user_info','001','base_info:sex'
+0 row(s) in 0.0390 seconds
+```
+
+#### 6.1.6 deleteall 删除整行数据
+
+```shell
+hbase(main):024:0> deleteall 't_user_info','001'
+0 row(s) in 0.0090 seconds
+
+hbase(main):025:0> get 't_user_info','001'
+COLUMN                            CELL                                                                                            
+0 row(s) in 0.0110 seconds
+```
+
+#### 6.1.7 删除整个表
+
+语法：
+
+```shell
+-- 停用表
+disable 表名
+-- 删除表
+drop 表名
+```
+
+删除表之前先要停用表。
+
+```shell
+hbase(main):028:0> disable 't_user_info'
+0 row(s) in 2.3640 seconds
+
+hbase(main):029:0> drop 't_user_info'
+0 row(s) in 1.2950 seconds
+
+hbase(main):030:0> list
+TABLE                                                                                                                             
+0 row(s) in 0.0130 seconds
+```
+
+
+
+### 6.2 客户端api
+
+如何描述一个表？
+
+如何创建一个表？
+
+删除一个表？
+
+修改一个表？
+
+> 步骤：
+>
+> 1. 构建连接
+> 2. 从连接中取到一个表DDL操作工具admin
+> 3. admin.createTable(表描述对象);
+> 4. admin.disableTable(表名);
+> 5. admin.deleteTable(表名);
+> 6. admin.modifyTable(表名，表描述对象)。
+
+#### 6.2.1 创建连接对象
+
+```java
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseConfiguration;
+import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HTableDescriptor;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.hadoop.hbase.client.ConnectionFactory;
+import org.apache.hadoop.hbase.regionserver.BloomType;
+
+
+Connection conn = null;
+    
+    @Before
+    public void getConn() throws Exception{
+        // new Configuration() 加载的是hadoop的配置文件：core-site.xml hdfs-site.xml，不会加载hbase-site.xml
+　　　　 // 构建一个连接对象
+　　　　 // Hbase提供了HbaseConfiguraton 用来加载hbase-site.xml
+　　　　 Configuration conf = HBaseConfiguration.create(); // 会自动加载hbase-site.xml
+　　　　 // 客户端查询数据的路由流程可知：客户端需要先链接 Zookeeper 获取索引表
+        conf.set("hbase.zookeeper.quorum", "thtf-01:2181,thtf-02:2181,thtf-03:2181");
+        
+　　　　 // 创建链接对象
+        conn = ConnectionFactory.createConnection(conf);
+    }
+```
+
+#### 6.2.2 DDL操作
+
+```java
+// 获取一个操作指定表的table对象,进行DML操作
+Table table = conn.getTable(TableName.valueOf("t_user_info"));
+```
+
+##### 增加数据
+
+1. Table对象，进行DML操作;
+
+2. 数据封装对象put;
+
+3. Table.put(put) | Table.put(List<put>puts);
+
+```java
+    /**
+     * 增
+     * 改:put来覆盖
+     * @throws Exception 
+     */
+    @Test
+    public void testPut() throws Exception{
+        
+        // 获取一个操作指定表的table对象,进行DML操作
+        Table table = conn.getTable(TableName.valueOf("t_user_info"));
+        
+        // 构造要插入的数据为一个Put类型(一个put对象只能对应一个rowkey)的对象
+        Put put = new Put(Bytes.toBytes("001"));
+        put.addColumn(Bytes.toBytes("base_info"), Bytes.toBytes("username"), Bytes.toBytes("张三"));
+        put.addColumn(Bytes.toBytes("base_info"), Bytes.toBytes("age"), Bytes.toBytes("18"));
+        put.addColumn(Bytes.toBytes("extra_info"), Bytes.toBytes("addr"), Bytes.toBytes("北京"));
+        
+        
+        Put put2 = new Put(Bytes.toBytes("002"));
+        put2.addColumn(Bytes.toBytes("base_info"), Bytes.toBytes("username"), Bytes.toBytes("李四"));
+        put2.addColumn(Bytes.toBytes("base_info"), Bytes.toBytes("age"), Bytes.toBytes("28"));
+        put2.addColumn(Bytes.toBytes("extra_info"), Bytes.toBytes("addr"), Bytes.toBytes("上海"));
+    
+
+        ArrayList<Put> puts = new ArrayList<>();
+        puts.add(put);
+        puts.add(put2);
+        
+        
+        // 插进去
+        table.put(puts);
+        
+        table.close();
+        conn.close();    
+    }
+```
+
+ 
+
+```java
+   /**
+     * 循环插入大量数据
+     * @throws Exception 
+     */
+    @Test
+    public void testManyPuts() throws Exception{
+        
+        Table table = conn.getTable(TableName.valueOf("user_info"));
+        ArrayList<Put> puts = new ArrayList<>();
+        
+        for(int i=0;i<100000;i++){
+            Put put = new Put(Bytes.toBytes(""+i));
+            put.addColumn(Bytes.toBytes("base_info"), Bytes.toBytes("username"), Bytes.toBytes("张三"+i));
+            put.addColumn(Bytes.toBytes("base_info"), Bytes.toBytes("age"), Bytes.toBytes((18+i)+""));
+            put.addColumn(Bytes.toBytes("extra_info"), Bytes.toBytes("addr"), Bytes.toBytes("北京"));
+            
+            puts.add(put);
+        }
+        
+        table.put(puts);
+        
+    }
+```
+
+##### 删除数据
+
+对称结构，插入的时候需要Put对象
+
+删除的时候，需要Delete对象
+
+```java
+    /**
+     * 删
+     * @throws Exception 
+     */
+    @Test
+    public void testDelete() throws Exception{
+        Table table = conn.getTable(TableName.valueOf("user_info"));
+        
+        // 构造一个对象封装要删除的数据信息　　　　 
+        // 全部删除
+        Delete delete1 = new Delete(Bytes.toBytes("001"));
+        // 删除指定的key
+        Delete delete2 = new Delete(Bytes.toBytes("002"));　
+        // qualifier为用户意义上的key，hbase中 family+qualifier 为一个key
+        delete2.addColumn(Bytes.toBytes("extra_info"), Bytes.toBytes("addr"));
+        
+        ArrayList<Delete> dels = new ArrayList<>();
+        dels.add(delete1);
+        dels.add(delete2);
+        
+        table.delete(dels);
+        
+        table.close();
+        conn.close();
+    }
+```
+
+##### 修改数据
+
+使用put来覆盖
+
+##### 查看数据
+
+qualifier为用户意义上的key，hbase中 family+qualifier 为一个key
+
+对称结构，插入的时候需要Put对象
+
+删除的时候，需要Delete对象
+
+查看单个行键数据，需要Get对象
+
+- ##### 取出单行数据
+
+  Table.get(Get)
+
+  可以取出该行特定 familyName：key 的 value
+
+  也可以遍历该行全部的value
+
+  ```java
+  	/**
+       * 查
+       * @throws Exception 
+       */
+      @Test
+      public void testGet() throws Exception{
+          
+          Table table = conn.getTable(TableName.valueOf("user_info"));
+          
+          // Get对象 指定行健　
+          Get get = new Get("002".getBytes());
+          // 行健为002的全部数据
+          Result result = table.get(get);
+          
+          // 从结果中取用户指定的某个key的value
+          byte[] value = result.getValue("base_info".getBytes(), "age".getBytes());
+          System.out.println(new String(value));
+          
+          System.out.println("-------------------------");
+          
+          // 遍历整行结果中的所有kv单元格　　　　 // 类似迭代器
+          CellScanner cellScanner = result.cellScanner();
+          while(cellScanner.advance()){
+              Cell cell = cellScanner.current();
+              
+              byte[] rowArray = cell.getRowArray();  //本kv所属的行键的字节数组
+              byte[] familyArray = cell.getFamilyArray();  //列族名的字节数组
+              byte[] qualifierArray = cell.getQualifierArray();  //列名的字节数据
+              byte[] valueArray = cell.getValueArray(); // value的字节数组
+              　　　　　　　// Hbase不仅仅是存储用户数据，同时还会存储很多附加的信息，以上get方法直接将用户数据和附加数据一起返回，若想获取用户信息，需要指定其实偏移量和数据长度　
+              System.out.println("行键: "+new String(rowArray,cell.getRowOffset(),cell.getRowLength()));
+              System.out.println("列族名: "+new String(familyArray,cell.getFamilyOffset(),cell.getFamilyLength()));
+              System.out.println("列名: "+new String(qualifierArray,cell.getQualifierOffset(),cell.getQualifierLength()));
+              System.out.println("value: "+new String(valueArray,cell.getValueOffset(),cell.getValueLength()));
+              
+          }
+          
+          table.close();
+          conn.close();
+          
+      }
+  ```
+
+- ##### 批量取出数据 
+
+  取出多个行健范围的数据，需要Scan对象
+
+  Table.get(Get)只能取出一个行健范围的数据；
+
+  如何按照行健范围取出数据？
+
+  
+
+  table.getScanner(scan)
+
+  拿到一个扫描器
+
+  ```java
+  	/**
+       * 按行键范围查询数据
+       * @throws Exception 
+       */
+      @Test
+      public void testScan() throws Exception{
+          
+          Table table = conn.getTable(TableName.valueOf("user_info"));
+          // Scan scan = new Scan("10".getBytes(), "10000".getBytes());
+          // 包含起始行键，不包含结束行键,但是如果真的想查询出末尾的那个行键，
+          // 那么，可以在末尾行键上拼接一个不可见的字节（\000）　　　　 
+          Scan scan = new Scan("10".getBytes(), "10000\000".getBytes());
+          
+          ResultScanner scanner = table.getScanner(scan);
+          
+          Iterator<Result> iterator = scanner.iterator();
+          
+          while(iterator.hasNext()){
+              // 拿到一行数据
+              Result result = iterator.next();
+              // 遍历整行结果中的所有kv单元格
+              CellScanner cellScanner = result.cellScanner();
+              while(cellScanner.advance()){
+                  Cell cell = cellScanner.current();
+                  
+                  byte[] rowArray = cell.getRowArray();  //本kv所属的行键的字节数组
+                  byte[] familyArray = cell.getFamilyArray();  //列族名的字节数组
+                  byte[] qualifierArray = cell.getQualifierArray();  //列名的字节数据
+                  byte[] valueArray = cell.getValueArray(); // value的字节数组
+                  
+                  System.out.println("行键: "+new String(rowArray,cell.getRowOffset(),cell.getRowLength()));
+                  System.out.println("列族名: "+new String(familyArray,cell.getFamilyOffset(),cell.getFamilyLength()));
+                  System.out.println("列名: "+new String(qualifierArray,cell.getQualifierOffset(),cell.getQualifierLength()));
+                  System.out.println("value: "+new String(valueArray,cell.getValueOffset(),cell.getValueLength()));
+              }
+              System.out.println("----------------------");
+          }
+      }
+      
+  ```
+
+**范围查询的细节**
+
+道理：在真正的结尾行健后面，拼接一个数字0的字节
+
+**\000是一个字节，全是0**
+
+**\表示转义，此时后面的0不是数字0，不是字符0**
+
+![](./img/hbase_byte.png)
+
+
+
+### 7. Hbase重要特性--排序特性（行键）
+
+插入到hbase中去的数据，hbase会自动排序存储：
+
+**排序规则： 首先看行键，然后看列族名，然后看列（key）名； 按字典顺序**
+
+Hbase的这个特性跟查询效率有极大的关系
+
+比如：一张用来存储用户信息的表，有名字，户籍，年龄，职业....等信息
+
+然后，在业务系统中经常需要：
+
+　　查询某个省的所有用户
+
+　　经常需要查询某个省的指定姓的所有用户
+
+**思路**：如果能将相同省的用户在hbase的存储文件中连续存储，并且能将相同省中相同姓的用户连续存储，那么，上述两个查询需求的效率就会提高！！！
+
+
+
+**做法**：将查询条件拼到rowkey内
