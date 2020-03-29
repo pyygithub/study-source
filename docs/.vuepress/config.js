@@ -6,7 +6,7 @@ module.exports = {
     ],
     base: '/study/', // 这是部署到github相关的配置
     markdown: {
-        lineNumbers: true // 代码块显示行号
+        lineNumbers: false // 代码块显示行号
     },
     plugins: ['permalink-pinyin', ['autobar', {'pinyinNav': true}]],
     themeConfig: {
@@ -17,6 +17,6 @@ module.exports = {
             {text: 'Github', link: 'https://github.com/pyy-admin-x'},
 
         ],
-        sidebarDepth: 4, // 侧边栏显示2级
+        sidebarDepth: 5, // 侧边栏显示2级
     }
 };
