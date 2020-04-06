@@ -18,7 +18,7 @@ HUE=Hadoop User Experience(Hadoop用户体验)，直白来说就一个开源的A
 
 ![](./img/hue.png)
 
-## 2. HUE安装（非root用户）
+## 2. HUE安装
 
 
 
