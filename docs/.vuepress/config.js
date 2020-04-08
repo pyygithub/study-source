@@ -13,6 +13,7 @@ module.exports = {
         logo: '/img/logo.png',
         nav: [ // 导航栏配置
             {text: '大数据', link: '/大数据/'},
+			{text: 'DevOps', link: '/DevOps/'},
             {text: '博客', link: 'https://www.jianshu.com/u/af08f637aff8'},
             {text: 'Github', link: 'https://github.com/pyy-admin-x'},
 
