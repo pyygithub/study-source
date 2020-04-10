@@ -824,3 +824,431 @@ For more examples and ideas, visit:
 
 
 ## 第 8 章 Docker 容器的高级操作
+
+### 8.1 下载 Nginx 镜像
+
+```shell
+[root@thtf-02 ~]# docker pull nginx:1.12.2
+1.12.2: Pulling from library/nginx
+f2aa67a397c4: Pull complete 
+e3eaf3d87fe0: Pull complete 
+38cb13c1e4c9: Pull complete 
+Digest: sha256:72daaf46f11cc753c4eab981cbf869919bd1fee3d2170a2adeac12400f494728
+Status: Downloaded newer image for nginx:1.12.2
+docker.io/library/nginx:1.12.2
+[root@thtf-02 ~]# docker images|grep nginx
+nginx               1.12.2              4037a5562b03        23 months ago       108MB
+[root@thtf-02 ~]# docker tag 4037a5562b03 panyangyang/nginx:v1.12.2
+[root@thtf-02 ~]# docker images|grep nginx
+panyangyang/nginx   v1.12.2             4037a5562b03        23 months ago       108MB
+nginx               1.12.2              4037a5562b03        23 months ago       108MB
+```
+
+### 8.2 映射端口
+
+> 映射端口
+>
+> docker run -p 容器外端口(hostPort):容器内端口(containerPort) 可指定多个
+
+```shell
+[root@thtf-02 ~]# docker run --name mynginx -d -p81:80 panyangyang/nginx:v1.12.2
+089698e2901c289dcbf9fd925c7ba4b941b98ba8ae590104c94c35e7d1020970
+```
+
+### 8.3 挂载数据卷
+
+> 挂载数据卷
+>
+> docker run -v 容器外目录:容器内目录
+
+```shell
+[root@thtf-02 ~]# mkdir html
+[root@thtf-02 ~]# cd html/
+[root@thtf-02 html]# wget www.baidu.com -O index.html
+--2020-04-10 14:53:32--  http://www.baidu.com/
+正在解析主机 www.baidu.com (www.baidu.com)... 61.135.169.121, 61.135.169.125, 2408:80f0:410c:1d:0:ff:b07a:39af, ...
+正在连接 www.baidu.com (www.baidu.com)|61.135.169.121|:80... 已连接。
+已发出 HTTP 请求，正在等待回应... 200 OK
+长度：2381 (2.3K) [text/html]
+正在保存至: “index.html”
+
+100%[=================================================================>] 2,381       --.-K/s 用时 0s      
+
+2020-04-10 14:53:32 (179 MB/s) - 已保存 “index.html” [2381/2381])
+[root@thtf-02 html]# docker run -d --name nginx_with_baidu -d -p8100:8100 -v/root/html:/usr/share/nginx/html panyangyang/nginx:v1.12.2
+40564e2f9b37f870df785ff78fa16ef9e6bbcf6016b68a0be62ba545e0e463ff
+```
+
+### 8.4 传递环境变量
+
+> 传递环境变量
+>
+>docker run -e 环境变量名=环境变量值
+
+```shell
+[root@thtf-02 html]# docker run --rm -e E_OPTS=abc alipine:v3.10.1 printenv
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+HOSTNAME=f61a865a517c
+E_OPTS=abc
+HOME=/root
+```
+
+### 8.5 容器内安装软件
+
+> 容器内安装软件
+>
+> yum/apt-get/apt等
+
+```shell
+[root@thtf-02 html]# docker exec -it nginx_with_baidu /bin/bash
+root@40564e2f9b37:/# apt-get install vim
+...
+root@40564e2f9b37:/# apt-get install curl
+```
+
+```shell
+[root@thtf-02 html]# docker commit -p 40564e2f9b37 panyangyang/nginx:curl
+sha256:a0fda12de6e676b1cd8d92f9cf08b21ec41eddef24bfe25fb7a6341e07cd894e
+[root@thtf-02 html]# docker images
+REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+panyangyang/nginx   curl                a0fda12de6e6        4 seconds ago       179MB
+alipine             v3.10.1             b7b28af77ffe        9 months ago        5.58MB
+hello-world         latest              fce289e99eb9        15 months ago       1.84kB
+nginx               1.12.2              4037a5562b03        23 months ago       108MB
+panyangyang/nginx   v1.12.2             4037a5562b03        23 months ago       108MB
+[root@thtf-02 html]# docker push panyangyang/nginx:curl
+The push refers to repository [docker.io/panyangyang/nginx]
+c26ae4ec4c41: Pushed 
+4258832b2570: Mounted from library/nginx 
+683a28d1d7fd: Mounted from library/nginx 
+d626a8ad97a1: Mounted from library/nginx 
+curl: digest: sha256:e5ce5fe7ceef8b60414fe602c202da67dfa48515a37a43f357f110fda4c327d7 size: 1160
+```
+
+![](./img/docker_curl.png)
+
+
+
+## 第 9 章 容器的生命周期
+
+- 检查本地是否存在镜像，如果不存在即从远端仓库检索
+- 利用镜像启动容器
+- 分配一个文件系统，并在只读的镜像层外挂一层可读写层
+- 从宿主机配置的网桥接口中桥接一个虚拟接口到容器
+- 从地址池配置一个 ip 地址给容器
+- 执行用户指定的指令
+- 执行完毕后容器终止
+
+![](./img/docker_life.png)
+
+
+
+## 第 10 章 Dockerfile 
+
+### 10.1 Dockerfile 概述
+
+
+
+![](./img/dockerfile1.png)
+
+![](./img/dockerfile2.png)
+
+### 10.2 Dockerfile 的规则
+
+- 格式
+  - #为注释
+  - 指令（大写）内容（小写）
+  - 尽管指令是大小写不敏感的, 但是我们强烈建议指令大写, 内容用小写表示
+- Docker 是按顺序执行 Dockerfile 里的指令集合的 (从上到下依次执行)
+- 每一个 Dockerfile 的第一个非注释指令, 必须是 "FROM" 指令, 用于为镜像文件构建过程中, 指定基准镜像, 后续的指令运行与此基准镜像所提供的运行环境中
+  - 实践中, 基准镜像可以是任何可用的镜像文件, 默认情况下, docker build 会在 docker 主机 (本地) 上查找指定的镜像文件, 当其在本地不存在时, 则会从 Docker registry (远端) 上拉取所需镜像文件。
+
+### 10.3 Dockerfile 核心指令
+
+- USER/WORKDIR指令
+- ADD/EXPOSE 指令
+- RUN/ENV 指令
+- CMD/ENTRYPOINT 指令
+
+#### 10.3.1 USER/WORKDIR指令
+
+> **docker build** 命令用于使用 Dockerfile 创建镜像。
+>
+> 语法
+>
+> ```
+> docker build [OPTIONS] PATH | URL | -
+> ```
+>
+> OPTIONS说明：
+>
+> - **-f :**指定要使用的Dockerfile路径；
+> - **--tag, -t:** 镜像的名字及标签，通常 name:tag 或者 name 格式；可以在一次构建中为一个镜像设置多个标签。
+
+```shell
+[root@thtf-02 ~]# cd /data/
+[root@thtf-02 data]# mkdir dockerfile
+[root@thtf-02 data]# cd dockerfile/
+[root@thtf-02 dockerfile]# vi Dockerfile
+```
+- **Dockerfile**
+
+```
+FROM docker.io/panyangyang/nginx:v1.12.2
+USER nginx
+WORKDIR /usr/share/nginx/html
+```
+- **构建镜像**
+
+```
+[root@thtf-02 dockerfile]# docker build . -t docker.io/panyangyang/nginx:v1.12.2_with_user_workdir
+Sending build context to Docker daemon  2.048kB
+Step 1/3 : FROM docker.io/panyangyang/nginx:v1.12.2
+ ---> 4037a5562b03
+Step 2/3 : USER nginx
+ ---> Running in 36545d309472
+Removing intermediate container 36545d309472
+ ---> 05d6de7f42ad
+Step 3/3 : WORKDIR /usr/share/nginx/html
+ ---> Running in a4a948a31b66
+Removing intermediate container a4a948a31b66
+ ---> cab1c7a07238
+Successfully built cab1c7a07238
+Successfully tagged panyangyang/nginx:v1.12.2_with_user_workdir
+
+```
+
+- **运行容器**
+
+```shell
+[root@thtf-02 dockerfile]# docker run --rm -it --name mynginx panyangyang/nginx:v1.12.2_with_user_workdir /bin/bash
+nginx@9db9958c5d75:/usr/share/nginx/html$ whoami
+nginx
+nginx@9db9958c5d75:/usr/share/nginx/html$ pwd
+/usr/share/nginx/html
+nginx@9db9958c5d75:/usr/share/nginx/html$ 
+```
+
+
+
+#### 10.3.21 ADD/EXPOSE 指令
+
+- **Dockerfile**
+
+```
+FROM docker.io/panyangyang/nginx:v1.12.2
+ADD index.html /usr/share/nginx/html/index.html
+EXPOSE 89
+```
+
+- **编译镜像**
+
+```shell
+[root@thtf-02 dockerfile]# docker build . -t panyangyang/nginx:v1.12.2_with_index_expose
+Sending build context to Docker daemon   5.12kB
+Step 1/3 : FROM docker.io/panyangyang/nginx:v1.12.2
+ ---> 4037a5562b03
+Step 2/3 : ADD index.html /usr/share/nginx/html/index.html
+ ---> a0224035af78
+Step 3/3 : EXPOSE 89
+ ---> Running in 074f42b67331
+Removing intermediate container 074f42b67331
+ ---> 9afed29a7ef2
+Successfully built 9afed29a7ef2
+Successfully tagged panyangyang/nginx:v1.12.2_with_index_expose
+```
+
+> EXPOSE <端口1> [<端口2>...]
+> 大家都知道以上代码是Dockerfile中来声明端口的命令，但是你真的了解过它吗？现在我带大家来深入了解我们的EXPOSE命令。
+>
+> 首先，我们最应该明确的一点就是，EXPOSE命令只是声明了容器应该打开的端口并没有实际上将它打开!也就是说，如果你不用-p或者-P中指定要映射的端口，你的容器是不会映射端口出去的，从而我们知道我们是没有办法在Dockerfile里面进行端口映射的，我们只能在容器启动的时候或者在docker-compose文件中使用ports来指定将要映射的端口。
+>
+> 那我们的EXPOSE能用来干什么呢?第一点就是写在Dockerfile中进行声明，能让运维人员或者后来者知道我们开启了容器的哪些端口。还有一点就是，当我们声明了EXPOSE端口之后，我们使用-P命令进行随机映射的时候，是会对这个端口进行映射的。比如说我们现在对一个tomcat容器进行EXPOSE 9999声明，那么我们进行-P随机映射的时候是会对9999端口进行映射的。
+
+```shell
+[root@thtf-02 dockerfile]# docker run -d -P --name mynginx1 panyangyang/nginx:v1.12.2_with_index_expose 
+182da13ed968f1a39b60904a5d61a879d576659e3b77128f9d0d594ed05d7068
+[root@thtf-02 dockerfile]# netstat -luntp
+```
+
+```shell
+tcp6       0      0 :::32769                :::*                    LISTEN      4484/docker-proxy 
+```
+
+
+
+#### 10.3.3 RUN/ENV 指令
+
+- **Dockerfile**
+```
+FROM centos:7
+ENV VER 9.11.4
+RUN yum install bind-$VER -y
+```
+
+- **编译镜像**
+```shell
+[root@thtf-02 dockerfile]# docker build . -t panyangyang/bind:v9.9.4_with_env_run
+````
+
+- **运行验证**
+
+```shell
+[root@thtf-02 dockerfile]# docker run -it --rm  panyangyang/bind:v9.9.4_with_env_run /bin/bash
+[root@e9c560ca0f6c /]# cat /etc/issue
+\S
+Kernel \r on an \m
+
+[root@e9c560ca0f6c /]# cat /etc/redhat-release 
+CentOS Linux release 7.7.1908 (Core)
+[root@e9c560ca0f6c /]# printenv
+HOSTNAME=e9c560ca0f6c
+TERM=xterm
+LS_COLORS=rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=01;05;37;41:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.Z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.jpg=01;35:*.jpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.axv=01;35:*.anx=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=01;36:*.au=01;36:*.flac=01;36:*.mid=01;36:*.midi=01;36:*.mka=01;36:*.mp3=01;36:*.mpc=01;36:*.ogg=01;36:*.ra=01;36:*.wav=01;36:*.axa=01;36:*.oga=01;36:*.spx=01;36:*.xspf=01;36:
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+PWD=/
+SHLVL=1
+HOME=/root
+VER=9.11.4
+_=/usr/bin/printenv
+[root@e9c560ca0f6c /]# rpm -qa bind    
+bind-9.11.4-9.P2.el7.x86_64
+[root@e9c560ca0f6c /]# 
+
+```
+
+
+
+#### 10.3.4 CMD/ENTRYPOINT 指令
+
+> CMD在容器运行的时候提供一些命令及参数
+
+- **Dockerfile**
+
+```
+FROM centos:7
+RUN yum install httpd -y
+CMD ["httpd", "-D", "FOREGROUND"]
+```
+
+- **编译镜像**
+
+```shell
+[root@thtf-02 dockerfile]# docker build . -t panyangyang/bind:v9.9.4_with_cmd
+```
+
+
+
+**ENTRYPOINT**
+
+ENTRYPOINT 的格式和 RUN 指令格式一样，分为 exec 格式和 shell 格式。
+
+ENTRYPOINT 的目的和 CMD 一样，都是在指定容器启动程序及参数。
+
+ENTRYPOINT 在运行时也可以替代，不过比 CMD 要略显繁琐，需要通过docker run 的参数 --entrypoint 来指定。
+
+当指定了 ENTRYPOINT 后， CMD 的含义就发生了改变，不再是直接的运行其命令，而是将 CMD 的内容作为参数传给 ENTRYPOINT 指令，换句话说实际执行时，将变为：
+
+```
+<ENTRYPOINT> "<CMD>"
+```
+
+那么有了 CMD 后，为什么还要有 ENTRYPOINT 呢？这种
+
+```
+<ENTRYPOINT> "<CMD>"
+```
+
+详细参考：https://www.cnblogs.com/reachos/p/8609025.html
+
+
+
+## 第 11 章 Docker 网络模型
+
+### 11.1 NAT (默认)
+
+```shell
+[root@thtf-02 ~]#  docker run -it --rm alipine:v3.10.1 /bin/sh
+/ # ip addr
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+64: eth0@if65: <BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN> mtu 1500 qdisc noqueue state UP 
+    link/ether 02:42:ac:11:00:05 brd ff:ff:ff:ff:ff:ff
+    inet 172.17.0.5/16 brd 172.17.255.255 scope global eth0
+       valid_lft forever preferred_lft forever
+/ # 
+```
+
+
+
+### 11.2 None
+
+```shell
+[root@thtf-02 ~]#  docker run -it --rm --net=none alipine:v3.10.1 /bin/sh
+/ # ip addr
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+/ # 
+```
+
+
+
+### 11.3 Host
+
+docker 和 宿主机是同一个网络
+
+```shell
+[root@thtf-02 ~]#  docker run -it --rm --net=host alipine:v3.10.1 /bin/sh
+/ # ip addr
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: ens32: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP qlen 1000
+    link/ether 00:50:56:a0:26:80 brd ff:ff:ff:ff:ff:ff
+    inet 10.10.50.249/24 brd 10.10.50.255 scope global ens32
+       valid_lft forever preferred_lft forever
+    inet 10.10.50.249/8 brd 10.255.255.255 scope global ens32
+       valid_lft forever preferred_lft forever
+    inet6 fe80::b5ce:75f0:e261:55ef/64 scope link 
+       valid_lft forever preferred_lft forever
+    inet6 fe80::7681:2b3b:cf23:5071/64 scope link tentative dadfailed 
+       valid_lft forever preferred_lft forever
+3: virbr0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc noqueue state DOWN qlen 1000
+    link/ether 52:54:00:cd:1a:36 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.122.1/24 brd 192.168.122.255 scope global virbr0
+       valid_lft forever preferred_lft forever
+4: virbr0-nic: <BROADCAST,MULTICAST> mtu 1500 qdisc pfifo_fast master virbr0 state DOWN qlen 1000
+    link/ether 52:54:00:cd:1a:36 brd ff:ff:ff:ff:ff:ff
+5: docker0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP 
+    link/ether 02:42:e5:43:75:66 brd ff:ff:ff:ff:ff:ff
+    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0
+       valid_lft forever preferred_lft forever
+    inet6 fe80::42:e5ff:fe43:7566/64 scope link 
+       valid_lft forever preferred_lft forever
+41: veth1549e7b@if40: <BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN> mtu 1500 qdisc noqueue master docker0 state UP 
+    link/ether 96:3b:68:21:cc:d9 brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::943b:68ff:fe21:ccd9/64 scope link 
+       valid_lft forever preferred_lft forever
+51: veth481fe6e@if50: <BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN> mtu 1500 qdisc noqueue master docker0 state UP 
+    link/ether 32:0b:4b:c6:17:71 brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::300b:4bff:fec6:1771/64 scope link 
+       valid_lft forever preferred_lft forever
+53: vethde451bf@if52: <BROADCAST,MULTICAST,UP,LOWER_UP,M-DOWN> mtu 1500 qdisc noqueue master docker0 state UP 
+    link/ether b6:83:89:ee:25:d9 brd ff:ff:ff:ff:ff:ff
+    inet6 fe80::b483:89ff:feee:25d9/64 scope link 
+       valid_lft forever preferred_lft forever
+/ # 
+
+```
+
+
+
+### 11.4 联合网络
+
