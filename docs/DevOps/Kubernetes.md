@@ -406,7 +406,7 @@ systemctl restart network
 
 ### 6.3 准备签发证书环境
 
-在 node-02 上
+在 node-05 上
 
 #### 6.3.1 安装 cfssl
 
@@ -782,4 +782,947 @@ Created symlink from /etc/systemd/system/multi-user.target.wants/nginx.service t
    可以看到NGINX镜像已经上传到public下
 
    ![](./img/harbor_push.png)
+
+
+
+### 6.6 部署 master 节点
+
+#### 6.6.1 部署 etch 集群
+
+##### 1）集群架构
+
+| 主机名  | 角色   | IP           |
+| ------- | ------ | ------------ |
+| node-02 | lead   | 10.10.50.20  |
+| node-03 | follow | 10.10.50.233 |
+| node-04 | follow | 10.10.50.99  |
+
+##### 2）创建基于根证书的config配置文件
+
+在 node-05 上
+
+```shell
+vi /opt/certs/ca-config.json
+```
+
+```
+{
+    "signing": {
+        "default": {
+            "expiry": "175200h"
+        },
+        "profiles": {
+            "server": {
+                "expiry": "175200h",
+                "usages": [
+                    "signing",
+                    "key encipherment",
+                    "server auth"
+                ]
+            },
+            "client": {
+                "expiry": "175200h",
+                "usages": [
+                    "signing",
+                    "key encipherment",
+                    "client auth"
+                ]
+            },
+            "peer": {
+                "expiry": "175200h",
+                "usages": [
+                    "signing",
+                    "key encipherment",
+                    "server auth",
+                    "client auth"
+                ]
+            }
+        }
+    }
+} 
+```
+
+##### 3）创建生成自签发证书的csr的json配置文件
+
+```shell
+vi /opt/certs/etcd-peer-csr.json
+```
+
+```
+{
+    "CN": "k8s-etcd",
+    "hosts": [
+        "10.10.50.50",
+        "10.10.50.20",
+        "10.10.50.233",
+        "10.10.50.99"
+    ],
+    "key": {
+        "algo": "rsa",
+        "size": 2048
+    },
+    "names": [
+        {
+            "C": "CN",
+            "ST": "beijing",
+            "L": "beijing",
+            "O": "thtf",
+            "OU": "ops"
+        }
+    ]
+}
+```
+
+##### 4）生成 etch 证书文件
+
+```shell
+[root@node-05 ~]# cd /opt/certs/
+[root@node-05 certs]# cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=peer etcd-peer-csr.json |cfssl-json -bare etcd-pee
+```
+##### 5）检查生成的证书
+
+```shell
+[root@node-05 certs]# ll
+总用量 36
+-rw-r--r-- 1 root root  837 4月  14 15:56 ca-config.json
+-rw-r--r-- 1 root root  989 4月  14 15:54 ca.csr
+-rw-r--r-- 1 root root  325 4月  14 15:54 ca-csr.json
+-rw------- 1 root root 1679 4月  14 15:54 ca-key.pem
+-rw-r--r-- 1 root root 1338 4月  14 15:54 ca.pem
+-rw-r--r-- 1 root root 1066 4月  14 16:02 etcd-peer.csr
+-rw-r--r-- 1 root root  374 4月  14 16:01 etcd-peer-csr.json
+-rw------- 1 root root 1675 4月  14 16:02 etcd-peer-key.pem
+-rw-r--r-- 1 root root 1428 4月  14 16:02 etcd-peer.pem
+```
+
+##### 6）创建 etch 用户
+
+在 node-02 上
+
+```shell
+[root@node-02 opt]# useradd -s /sbin/nologin -M etcd
+```
+
+##### 7）下载 etcd 软件, 解压, 做软连接
+
+下载地址：https://github.com/etcd-io/etcd/tags 这里选择 3.1.20 版本
+
+```shell
+[root@node-02 opt]# tar -zxvf etcd-v3.1.20-linux-amd64.tar.gz -C /opt
+[root@node-02 opt]# mv etcd-v3.1.20-linux-amd64/ etcd-v3.1.20
+[root@node-02 opt]# ln -s /opt/etcd-v3.1.20/ /opt/etcd
+[root@node-02 opt]# ll
+总用量 0
+drwxr-xr-x 2 root   root   71 4月  14 10:53 certs
+lrwxrwxrwx 1 root   root   18 4月  14 17:05 etcd -> /opt/etcd-v3.1.20/
+drwxr-xr-x 3 478493 89939 123 10月 11 2018 etcd-v3.1.20
+drwxr-xr-x 2 root   root    6 4月  14 10:32 soft
+```
+
+##### 8）创建目录, 拷贝证书文件
+
+```shell
+[root@node-02 opt]# mkdir -p /opt/etcd/certs /data/etcd /data/logs/etcd-server
+```
+
+```shell
+[root@node-02 opt]# cd etcd/certs/
+[root@node-02 certs]# scp node-05:/opt/certs/ca.pem .
+[root@node-02 certs]# scp node-05:/opt/certs/etcd-peer.pem .
+[root@node-02 certs]# scp node-05:/opt/certs/etcd-peer-key.pem .
+```
+
+##### 9）创建 etcd 服务启动脚本
+
+```shell
+vi /opt/etcd/etcd-server-startup.sh
+```
+
+```sh
+#!/bin/sh
+./etcd --name etcd-server-node-02 \
+       --data-dir /data/etcd/etcd-server \
+       --listen-peer-urls https://10.10.50.20:2380 \
+       --listen-client-urls https://10.10.50.20:2379,http://127.0.0.1:2379 \
+       --quota-backend-bytes 8000000000 \
+       --initial-advertise-peer-urls https://10.10.50.20:2380 \
+       --advertise-client-urls https://10.10.50.20:2379,http://127.0.0.1:2379 \
+       --initial-cluster  etcd-server-node-02=https://10.10.50.20:2380,etcd-server-node-03=https://10.10.50.233:2380,etcd-server-node-04=https://10.10.50.99:2380 \
+       --ca-file ./certs/ca.pem \
+       --cert-file ./certs/etcd-peer.pem \
+       --key-file ./certs/etcd-peer-key.pem \
+       --client-cert-auth  \
+       --trusted-ca-file ./certs/ca.pem \
+       --peer-ca-file ./certs/ca.pem \
+       --peer-cert-file ./certs/etcd-peer.pem \
+       --peer-key-file ./certs/etcd-peer-key.pem \
+       --peer-client-cert-auth \
+       --peer-trusted-ca-file ./certs/ca.pem \
+       --log-output stdout
+
+```
+
+```shell
+[root@node-02 ~]# chmod +x /opt/etcd/etcd-server-startup.sh
+```
+
+##### 10）授权目录权限
+
+```shell
+[root@node-02 ~]# chown -R etcd.etcd /opt/etcd-v3.1.20/ /data/etcd/ /data/logs/etcd-server/
+```
+
+##### 11）安装 supervisor 软件
+
+```shell
+[root@node-02 ~]# yum install supervisor -y
+[root@node-02 ~]# systemctl start supervisord
+[root@node-02 ~]# systemctl enable supervisord
+```
+
+##### 12）创建 supervisor 配置
+
+```shell
+[root@node-02 ~]# vi /etc/supervisord.d/etcd-server.ini
+```
+
+```ini
+[program:etcd-server-node-02]
+command=/opt/etcd/etcd-server-startup.sh                        ; the program (relative uses PATH, can take args)
+numprocs=1                                                      ; number of processes copies to start (def 1)
+directory=/opt/etcd                                             ; directory to cwd to before exec (def no cwd)
+autostart=true                                                  ; start at supervisord start (default: true)
+autorestart=true                                                ; retstart at unexpected quit (default: true)
+startsecs=30                                                    ; number of secs prog must stay running (def. 1)
+startretries=3                                                  ; max # of serial start failures (default 3)
+exitcodes=0,2                                                   ; 'expected' exit codes for process (default 0,2)
+stopsignal=QUIT                                                 ; signal used to kill process (default TERM)
+stopwaitsecs=10                                                 ; max num secs to wait b4 SIGKILL (default 10)
+user=etcd                                                       ; setuid to this UNIX account to run the program
+redirect_stderr=true                                            ; redirect proc stderr to stdout (default false)
+stdout_logfile=/data/logs/etcd-server/etcd.stdout.log           ; stdout log path, NONE for none; default AUTO
+stdout_logfile_maxbytes=64MB                                    ; max # logfile bytes b4 rotation (default 50MB)
+stdout_logfile_backups=4                                        ; # of stdout logfile backups (default 10)
+stdout_capture_maxbytes=1MB                                     ; number of bytes in 'capturemode' (default 0)
+stdout_events_enabled=false                                     ; emit events on stdout writes (default false)
+```
+
+##### 13）启动 etcd 服务
+
+```shell
+[root@node-02 certs]# supervisorctl update
+[root@node-02 certs]# supervisorctl status
+etcd-server-node-02              RUNNING   pid 5488, uptime 0:01:03
+```
+
+```shell
+[root@node-02 certs]# netstat -lntup|grep etcd
+tcp        0      0 10.10.50.99:2379        0.0.0.0:*               LISTEN      27058/./etcd        
+tcp        0      0 127.0.0.1:2379          0.0.0.0:*               LISTEN      27058/./etcd        
+tcp        0      0 10.10.50.99:2380        0.0.0.0:*               LISTEN      27058/./etcd
+```
+
+
+
+##### 同理：在 node-03 node-04 上安装 etcd
+
+重复 6~ 13 步骤。
+
+不同的地方：
+
+```shell
+opt/etcd/etcd-server-startup.sh
+##########
+--name
+--listen-peer-urls
+--listen-client-urls
+--initial-advertise-peer-urls
+--advertise-client-urls
+##########
+/etc/supervisord.d/etcd-server.ini
+[program:etcd-server-node-xx]
+```
+
+
+
+##### 检查集群状态
+
+```shell
+[root@node-03 etcd]# ./etcdctl  cluster-health
+member 7d027ad4e297952d is healthy: got healthy result from http://127.0.0.1:2379
+member 804d7a56c0ba452b is healthy: got healthy result from http://127.0.0.1:2379
+member a9bfb00ec3d05a41 is healthy: got healthy result from http://127.0.0.1:2379
+cluster is healthy
+[root@node-03 etcd]# ./etcdctl member list
+7d027ad4e297952d: name=etcd-server-node-02 peerURLs=https://10.10.50.20:2380 clientURLs=http://127.0.0.1:2379,https://10.10.50.20:2379 isLeader=false
+804d7a56c0ba452b: name=etcd-server-node-03 peerURLs=https://10.10.50.233:2380 clientURLs=http://127.0.0.1:2379,https://10.10.50.233:2379 isLeader=false
+a9bfb00ec3d05a41: name=etcd-server-node-04 peerURLs=https://10.10.50.99:2380 clientURLs=http://127.0.0.1:2379,https://10.10.50.99:2379 isLeader=true
+```
+
+
+
+#### 6.6.2 部署 kube-apiserver 集群
+
+##### 1）集群架构
+
+| 主机名  | 角色           | IP           |
+| ------- | -------------- | ------------ |
+| node-03 | kube-apiserver | 10.10.50.233 |
+| node-04 | kube-apiserver | 10.10.50.99  |
+
+##### 2）下载 kube-apiserver 软件, 解压, 做软连接
+
+下载地址：https://github.com/kubernetes/kubernetes/releases/tag/v1.15.2
+
+备用地址：https://storage.googleapis.com/kubernetes-release/release/v1.15.2/kubernetes-server-linux-amd64.tar.gzclear
+
+```shell
+[root@node-03 ~]# tar -zxvf kubernetes-server-linux-amd64.tar.gz -C /opt
+[root@node-03 ~]# cd /opt/
+[root@node-03 opt]# mv kubernetes/ kubernetes-v1.15.2
+[root@node-03 opt]# ln -s /opt/kubernetes-v1.15.2/ /opt/kubernetes
+[root@node-03 opt]# cd kubernetes
+[root@node-03 kubernetes]# rm -rf kubernetes-src.tar.gz 
+[root@node-03 kubernetes]# cd server/bin/
+[root@node-03 bin]# rm -rf *.tar
+[root@node-03 bin]# rm -rf *_tag
+```
+
+##### 3）签发 client 证书
+
+在 node-05 上
+
+1. 创建生成证书 csr 的 json 配置文件
+
+```shell
+vi /opt/certs/client-csr.json
+```
+
+```json
+{
+    "CN": "k8s-node",
+    "hosts": [
+    ],
+    "key": {
+        "algo": "rsa",
+        "size": 2048
+    },
+    "names": [
+        {
+            "C": "CN",
+            "ST": "beijing",
+            "L": "beijing",
+            "O": "thtf",
+            "OU": "ops"
+        }
+    ]
+}
+```
+
+2. 生成 client 证书文件
+
+   ```shell
+   [root@node-05 certs]# cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client client-csr.json |cfssl-json -bare client
+   ```
+
+3. 检查生成的证书文件
+
+   ```shell
+   [root@node-05 certs]# ll
+   -rw-r--r-- 1 root root  997 4月  14 19:00 client.csr
+   -rw-r--r-- 1 root root  282 4月  14 18:59 client-csr.json
+   -rw------- 1 root root 1679 4月  14 19:00 client-key.pem
+   -rw-r--r-- 1 root root 1363 4月  14 19:00 client.pem
+   ```
+
+##### 4）签发 kube-apiserver 证书
+
+在 node-05 上
+
+1. 创建生成证书 csr 的 json 配置文件
+
+   ```shell
+   vi /opt/certs/apiserver-csr.json
+   ```
+
+   ```json
+   {
+       "CN": "k8s-apiserver",
+       "hosts": [
+           "127.0.0.1",
+           "192.168.0.1",
+           "kubernetes.default",
+           "kubernetes.default.svc",
+           "kubernetes.default.svc.cluster",
+           "kubernetes.default.svc.cluster.local",
+           "10.10.50.50",
+           "10.10.50.233",
+           "10.10.50.99"
+       ],
+       "key": {
+           "algo": "rsa",
+           "size": 2048
+       },
+       "names": [
+           {
+               "C": "CN",
+               "ST": "beijing",
+               "L": "beijing",
+               "O": "thtf",
+               "OU": "ops"
+           }
+       ]
+   }
+   ```
+
+   2. 生成 kube-apiserver 证书文件
+
+      ```shell
+      [root@node-05 certs]# cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=server apiserver-csr.json |cfssl-json -bare apiserver
+      ```
+
+   3. 检查证书文件
+
+      ```shell
+      [root@node-05 certs]# ll
+      总用量 68
+      -rw-r--r-- 1 root root 1245 4月  14 19:13 apiserver.csr
+      -rw-r--r-- 1 root root  554 4月  14 19:12 apiserver-csr.json
+      -rw------- 1 root root 1675 4月  14 19:13 apiserver-key.pem
+      -rw-r--r-- 1 root root 1590 4月  14 19:13 apiserver.pem
+      ```
+
+
+##### 5）拷贝证书文件到各个节点, 并创建配置
+
+   1. 拷贝证书文件到 /opt/kubernetes/server/bin/certs 目录下
+
+      ```shell
+      [root@node-04 bin]# mkdir certs
+      [root@node-04 certs]# scp node-05:/opt/certs/ca.pem .
+      [root@node-04 certs]# scp node-05:/opt/certs/ca-key.pem .
+      [root@node-04 certs]# scp node-05:/opt/certs/client.pem .
+      [root@node-04 certs]# scp node-05:/opt/certs/client-key.pem .
+      [root@node-04 certs]# scp node-05:/opt/certs/apiserver.pem .
+      [root@node-04 certs]# scp node-05:/opt/certs/apiserver-key.pem .
+      
+      ```
+
+   2. 创建配置
+
+      ```shell
+      [root@node-04 bin]# mkdir conf
+      [root@node-04 bin]# cd conf/
+      [root@node-04 conf]# vi audit.yaml
+      ```
+
+      ```yaml
+      apiVersion: audit.k8s.io/v1beta1 # This is required.
+      kind: Policy
+      # Don't generate audit events for all requests in RequestReceived stage.
+      omitStages:
+        - "RequestReceived"
+      rules:
+        # Log pod changes at RequestResponse level
+        - level: RequestResponse
+          resources:
+          - group: ""
+            # Resource "pods" doesn't match requests to any subresource of pods,
+            # which is consistent with the RBAC policy.
+            resources: ["pods"]
+        # Log "pods/log", "pods/status" at Metadata level
+        - level: Metadata
+          resources:
+          - group: ""
+            resources: ["pods/log", "pods/status"]
+      
+        # Don't log requests to a configmap called "controller-leader"
+        - level: None
+          resources:
+          - group: ""
+            resources: ["configmaps"]
+            resourceNames: ["controller-leader"]
+      
+        # Don't log watch requests by the "system:kube-proxy" on endpoints or services
+        - level: None
+          users: ["system:kube-proxy"]
+          verbs: ["watch"]
+          resources:
+          - group: "" # core API group
+            resources: ["endpoints", "services"]
+      
+        # Don't log authenticated requests to certain non-resource URL paths.
+        - level: None
+          userGroups: ["system:authenticated"]
+          nonResourceURLs:
+          - "/api*" # Wildcard matching.
+          - "/version"
+      
+        # Log the request body of configmap changes in kube-system.
+        - level: Request
+          resources:
+          - group: "" # core API group
+            resources: ["configmaps"]
+          # This rule only applies to resources in the "kube-system" namespace.
+          # The empty string "" can be used to select non-namespaced resources.
+          namespaces: ["kube-system"]
+      
+        # Log configmap and secret changes in all other namespaces at the Metadata level.
+        - level: Metadata
+          resources:
+          - group: "" # core API group
+            resources: ["secrets", "configmaps"]
+      
+        # Log all other resources in core and extensions at the Request level.
+        - level: Request
+          resources:
+          - group: "" # core API group
+          - group: "extensions" # Version of group should NOT be included.
+      
+        # A catch-all rule to log all other requests at the Metadata level.
+        - level: Metadata
+          # Long-running requests like watches that fall under this rule will not
+          # generate an audit event in RequestReceived.
+          omitStages:
+            - "RequestReceived"
+      ```
+
+      ##### 5）创建 apiserver 启动脚本
+
+      ```shell
+      [root@node-04 bin]# vi /opt/kubernetes/server/bin/kube-apiserver.sh
+      ```
+
+      ```shell
+      #!/bin/bash
+      ./kube-apiserver \
+        --apiserver-count 2 \
+        --audit-log-path /data/logs/kubernetes/kube-apiserver/audit-log \
+        --audit-policy-file ./conf/audit.yaml \
+        --authorization-mode RBAC \
+        --client-ca-file ./certs/ca.pem \
+        --requestheader-client-ca-file ./cert/ca.pem \
+        --enable-admission-plugins NamespaceLifecycle,LimitRanger,ServiceAccount,DefaultStorageClass,DefaultTolerationSeconds,MutatingAdmissionWebhook,ValidatingAdmissionWebhook,ResourceQuota \
+        --etcd-cafile ./certs/ca.pem \
+        --etcd-certfile ./certs/client.pem \
+        --etcd-keyfile ./certs/client-key.pem \
+        --etcd-servers https://10.10.50.20:2379,https://10.10.50.233:2379,https://10.10.50.99:2379 \
+        --service-account-key-file ./certs/ca-key.pem \
+        --service-cluster-ip-range 192.168.0.0/16 \
+        --service-node-port-range 3000-29999 \
+        --target-ram-mb=1024 \
+        --kubelet-client-certificate ./certs/client.pem \
+        --kubelet-client-key ./certs/client-key.pem \
+        --log-dir  /data/logs/kubernetes/kube-apiserver \
+        --tls-cert-file ./certs/apiserver.pem \
+        --tls-private-key-file ./certs/apiserver-key.pem \
+        --v 2
+      ```
+
+##### 6）授权和创建目录
+
+      ```shell
+      [root@node-04 bin]# chmod +x kube-apiserver.sh
+      [root@node-04 bin]# mkdir -p /data/logs/kubernetes/kube-apiserver
+      ```
+
+##### 7）创建 supervisor 配置
+
+      ```shell
+vi /etc/supervisord.d/kube-apiserver.ini
+      ```
+
+```ini
+[program:kube-apiserver-7-21]
+command=/opt/kubernetes/server/bin/kube-apiserver.sh            ; the program (relative uses PATH, can take args)
+numprocs=1                                                      ; number of processes copies to start (def 1)
+directory=/opt/kubernetes/server/bin                            ; directory to cwd to before exec (def no cwd)
+autostart=true                                                  ; start at supervisord start (default: true)
+autorestart=true                                                ; retstart at unexpected quit (default: true)
+startsecs=30                                                    ; number of secs prog must stay running (def. 1)
+startretries=3                                                  ; max # of serial start failures (default 3)
+exitcodes=0,2                                                   ; 'expected' exit codes for process (default 0,2)
+stopsignal=QUIT                                                 ; signal used to kill process (default TERM)
+stopwaitsecs=10                                                 ; max num secs to wait b4 SIGKILL (default 10)
+user=root                                                       ; setuid to this UNIX account to run the program
+redirect_stderr=true                                            ; redirect proc stderr to stdout (default false)
+stdout_logfile=/data/logs/kubernetes/kube-apiserver/apiserver.stdout.log        ; stderr log path, NONE for none; default AUTO
+stdout_logfile_maxbytes=64MB                                    ; max # logfile bytes b4 rotation (default 50MB)
+stdout_logfile_backups=4                                        ; # of stdout logfile backups (default 10)
+stdout_capture_maxbytes=1MB                                     ; number of bytes in 'capturemode' (default 0)
+stdout_events_enabled=false                                     ; emit events on stdout writes (default false)
+```
+
+##### 8）启动服务并检测
+
+```shell
+[root@node-04 bin]# supervisorctl update
+kube-apiserver-node-04: added process group
+[root@node-04 bin]# supervisorctl status
+etcd-server-node-04              RUNNING   pid 27057, uptime 1:34:08
+kube-apiserver-node-04           STARTING  
+[root@node-04 bin]# netstat -nltup|grep kube-api
+tcp        0      0 127.0.0.1:8080          0.0.0.0:*               LISTEN      32456/./kube-apiser 
+tcp6       0      0 :::6443                 :::*                    LISTEN      32456/./kube-apiser 
+
+```
+
+##### 同理, 在 node-03 上完成 2~8 步骤
+
+不同的地方：
+
+```shell
+vi /etc/supervisord.d/kube-apiserver.ini
+[program:kube-apiserver-node-03]
+```
+
+
+
+#### 6.6.3 部署四层反向代理
+
+##### 1）集群架构
+
+| 主机名  | 角色 | IP 地址     | VIP 地址    |
+| ------- | ---- | ----------- | ----------- |
+| node-01 | L4   | 10.10.50.50 | 10.50.50.xx |
+| node-02 | L4   | 10.10.50.20 | 10.10.50.xx |
+
+##### 2）安装 Nginx 和 Keepalived
+
+在 node-01 和 node-02 上都安装 Nginx 和 Keepalived
+
+```shell
+yum install nginx keepalived -y
+```
+
+在 node-01 和 node-02 上配置 Nginx 
+
+```shell
+vi /etc/nginx/nginx.conf
+```
+
+```
+# 加在配置文件末尾
+stream {
+    upstream kube-apiserver {
+        server 10.10.50.233:6443     max_fails=3 fail_timeout=30s;
+        server 10.10.50.99:6443     max_fails=3 fail_timeout=30s;
+    }
+    server {
+        listen 7443;
+        proxy_connect_timeout 2s;
+        proxy_timeout 900s;
+        proxy_pass kube-apiserver;
+    }
+}
+```
+
+在 node-01 和 node-02 上配置 keepalived
+
+```shell
+# 检测脚本
+vi /etc/keepalived/check_port.sh
+```
+
+```shell
+#!/bin/bash
+#keepalived 监控端口脚本
+#使用方法：
+#在keepalived的配置文件中
+#vrrp_script check_port {#创建一个vrrp_script脚本,检查配置
+#    script "/etc/keepalived/check_port.sh 6379" #配置监听的端口
+#    interval 2 #检查脚本的频率,单位（秒）
+#}
+CHK_PORT=$1
+if [ -n "$CHK_PORT" ];then
+        PORT_PROCESS=`ss -lnt|grep $CHK_PORT|wc -l`
+        if [ $PORT_PROCESS -eq 0 ];then
+                echo "Port $CHK_PORT Is Not Used,End."
+                exit 1
+        fi
+else
+        echo "Check Port Cant Be Empty!"
+fi
+```
+
+修改执行权限
+
+```shell
+chmod +x /etc/keepalived/check_port.sh
+```
+
+keepalived 主配置 node-01
+
+```shell
+[root@node-01 ~]# vi /etc/keepalived/keepalived.conf
+```
+
+```
+! Configuration File for keepalived
+
+global_defs {
+   router_id 10.10.50.50
+
+}
+
+vrrp_script chk_nginx {
+    script "/etc/keepalived/check_port.sh 7443"
+    interval 2
+    weight -20
+}
+
+vrrp_instance VI_1 {
+    state MASTER
+    interface eth0
+    virtual_router_id 251
+    priority 100
+    advert_int 1
+    mcast_src_ip 10.10.50.50
+    nopreempt
+
+    authentication {
+        auth_type PASS
+        auth_pass 11111111
+    }
+    track_script {
+         chk_nginx
+    }
+    virtual_ipaddress {
+        10.10.50.10
+    }
+}
+```
+
+keepalived 从配置 node-02
+
+```shell
+[root@node-02 ~]# vi /etc/keepalived/keepalived.conf 
+```
+
+```
+! Configuration File for keepalived
+global_defs {
+    router_id 10.10.50.20
+}
+vrrp_script chk_nginx {
+    script "/etc/keepalived/check_port.sh 7443"
+    interval 2
+    weight -20
+}
+vrrp_instance VI_1 {
+    state BACKUP
+    interface eth0 #### 这里的网卡名称需要和主机保持一致
+    virtual_router_id 251
+    mcast_src_ip 10.10.50.20
+    priority 90
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass 11111111
+    }
+    track_script {
+        chk_nginx
+    }
+    virtual_ipaddress {
+        10.10.50.10
+    }
+}
+```
+
+##### 3）启动代理并检查
+
+```shell
+systemctl start nginx keepalived
+systemctl enable nginx keepalived
+netstat -lntup|grep nginx
+```
+
+```shell
+[root@node-01 ~]# ip addr
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+    inet 127.0.0.1/8 scope host lo
+       valid_lft forever preferred_lft forever
+    inet6 ::1/128 scope host 
+       valid_lft forever preferred_lft forever
+2: enp0s3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP group default qlen 1000
+    link/ether 08:00:27:1c:87:23 brd ff:ff:ff:ff:ff:ff
+    inet 10.10.50.50/24 brd 10.10.50.255 scope global noprefixroute dynamic enp0s3
+       valid_lft 83981sec preferred_lft 83981sec
+    inet 10.10.50.10/32 scope global enp0s3
+       valid_lft forever preferred_lft forever
+    inet6 fe80::311e:9caf:bb5:e825/64 scope link noprefixroute 
+       valid_lft forever preferred_lft forever
+```
+
+
+
+#### 6.6.4 部署 controller-manager 集群
+
+##### 1）集群架构
+
+| 主机名  | 角色               | IP地址       |
+| ------- | ------------------ | ------------ |
+| node-03 | controller-manager | 10.10.50.233 |
+| node-04 | controller-manager | 10.10.50.99  |
+
+接下来, 以 node-03 为例
+
+##### 2）创建启动脚本
+
+```shell
+[root@node-03 ~]# vi /opt/kubernetes/server/bin/kube-controller-manager.sh
+```
+
+```shell
+#!/bin/sh
+./kube-controller-manager \
+  --cluster-cidr 172.7.0.0/16 \
+  --leader-elect true \
+  --log-dir /data/logs/kubernetes/kube-controller-manager \
+  --master http://127.0.0.1:8080 \
+  --service-account-private-key-file ./cert/ca-key.pem \
+  --service-cluster-ip-range 192.168.0.0/16 \
+  --root-ca-file ./cert/ca.pem \
+  --v 2 
+```
+
+##### 3）授权文件权限, 创建目录
+
+```shell
+[root@node-03 ~]# chmod +x /opt/kubernetes/server/bin/kube-controller-manager.sh 
+[root@node-03 ~]# mkdir -p /data/logs/kubernetes/kube-controller-manager
+```
+
+##### 4）创建 supervisor 配置
+
+```shell
+[root@node-03 ~]# vi /etc/supervisord.d/kube-conntroller-manager.ini
+```
+
+```shell
+[program:kube-controller-manager-node-03]
+command=/opt/kubernetes/server/bin/kube-controller-manager.sh                     ; the program (relative uses PATH, can take args)
+numprocs=1                                                                        ; number of processes copies to start (def 1)
+directory=/opt/kubernetes/server/bin                                              ; directory to cwd to before exec (def no cwd)
+autostart=true                                                                    ; start at supervisord start (default: true)
+autorestart=true                                                                  ; retstart at unexpected quit (default: true)
+startsecs=30                                                                      ; number of secs prog must stay running (def. 1)
+startretries=3                                                                    ; max # of serial start failures (default 3)
+exitcodes=0,2                                                                     ; 'expected' exit codes for process (default 0,2)
+stopsignal=QUIT                                                                   ; signal used to kill process (default TERM)
+stopwaitsecs=10                                                                   ; max num secs to wait b4 SIGKILL (default 10)
+user=root                                                                         ; setuid to this UNIX account to run the program
+redirect_stderr=true                                                              ; redirect proc stderr to stdout (default false)
+stdout_logfile=/data/logs/kubernetes/kube-controller-manager/controller.stdout.log  ; stderr log path, NONE for none; default AUTO
+stdout_logfile_maxbytes=64MB                                                      ; max # logfile bytes b4 rotation (default 50MB)
+stdout_logfile_backups=4                                                          ; # of stdout logfile backups (default 10)
+stdout_capture_maxbytes=1MB                                                       ; number of bytes in 'capturemode' (default 0)
+stdout_events_enabled=false                                                       ; emit events on stdout writes (default false)
+```
+
+##### 5）启动服务并检查
+
+```shell
+[root@node-03 ~]# supervisorctl update
+kube-controller-manager-node-03: added process group
+[root@node-03 ~]# supervisorctl status
+etcd-server-node-03               RUNNING   pid 4912, uptime 2:33:03
+kube-apiserver-node-03            RUNNING   pid 4913, uptime 2:33:03
+kube-controller-manager-node-03   STARTING 
+```
+
+##### 同理, 另一台按照 2~5 步骤执行
+
+不同的地方
+
+```shell
+vi /etc/supervisord.d/kube-conntroller-manager.ini
+[program:kube-controller-manager-node-04]
+```
+
+
+
+#### 6.6.5 部署 kube-scheduler 集群
+
+##### 1）集群架构
+
+| 主机名  | 角色           | IP地址       |
+| ------- | -------------- | ------------ |
+| node-03 | kube-scheduler | 10.10.50.233 |
+| node-04 | kube-scheduler | 10.10.50.99  |
+
+接下来, 以 node-03 为例
+
+##### 2）创建启动脚本
+
+```shell
+[root@node-03 ~]#vi /opt/kubernetes/server/bin/kube-scheduler.sh
+```
+
+```shell
+#!/bin/sh
+./kube-scheduler \
+  --leader-elect  \
+  --log-dir /data/logs/kubernetes/kube-scheduler \
+  --master http://127.0.0.1:8080 \
+  --v 2
+```
+
+##### 3）授权文件权限, 创建目录
+
+```shell
+[root@node-03 ~]# chmod +x  /opt/kubernetes/server/bin/kube-scheduler.sh
+[root@node-03 ~]# mkdir -p /data/logs/kubernetes/kube-scheduler
+```
+
+##### 4）创建 supervisor 配置
+
+```shell
+[root@node-03 ~]# vi /etc/supervisord.d/kube-scheduler.ini
+```
+
+```ini
+[program:kube-scheduler-node-03]
+command=/opt/kubernetes/server/bin/kube-scheduler.sh                     ; the program (relative uses PATH, can take args)
+numprocs=1                                                               ; number of processes copies to start (def 1)
+directory=/opt/kubernetes/server/bin                                     ; directory to cwd to before exec (def no cwd)
+autostart=true                                                           ; start at supervisord start (default: true)
+autorestart=true                                                         ; retstart at unexpected quit (default: true)
+startsecs=30                                                             ; number of secs prog must stay running (def. 1)
+startretries=3                                                           ; max # of serial start failures (default 3)
+exitcodes=0,2                                                            ; 'expected' exit codes for process (default 0,2)
+stopsignal=QUIT                                                          ; signal used to kill process (default TERM)
+stopwaitsecs=10                                                          ; max num secs to wait b4 SIGKILL (default 10)
+user=root                                                                ; setuid to this UNIX account to run the program
+redirect_stderr=true                                                     ; redirect proc stderr to stdout (default false)
+stdout_logfile=/data/logs/kubernetes/kube-scheduler/scheduler.stdout.log ; stderr log path, NONE for none; default AUTO
+stdout_logfile_maxbytes=64MB                                             ; max # logfile bytes b4 rotation (default 50MB)
+stdout_logfile_backups=4                                                 ; # of stdout logfile backups (default 10)
+stdout_capture_maxbytes=1MB                                              ; number of bytes in 'capturemode' (default 0)
+stdout_events_enabled=false                                              ; emit events on stdout writes (default false)
+```
+
+##### 5）启动服务并检查
+
+```shell
+[root@node-03 ~]# supervisorctl update
+kube-scheduler-node-03: added process group
+[root@node-03 ~]# supervisorctl status
+etcd-server-node-03               RUNNING   pid 4912, uptime 2:43:36
+kube-apiserver-node-03            RUNNING   pid 4913, uptime 2:43:36
+kube-controller-manager-node-03   STARTING  
+kube-scheduler-node-03            STARTING 
+```
+
+##### 同理, 另一台按照 2~5 步骤执行
+
+不同的地方
+
+```shell
+/etc/supervisord.d/kube-scheduler.ini
+[program:kube-scheduler-node-04]
+```
+
+
 
