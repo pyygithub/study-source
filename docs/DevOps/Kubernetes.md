@@ -1157,7 +1157,8 @@ vi /opt/certs/client-csr.json
            "kubernetes.default.svc.cluster.local",
            "10.10.50.50",
            "10.10.50.233",
-           "10.10.50.99"
+           "10.10.50.99",
+           "10.10.50.10"
        ],
        "key": {
            "algo": "rsa",
@@ -1173,16 +1174,16 @@ vi /opt/certs/client-csr.json
            }
        ]
    }
-   ```
-
-   2. 生成 kube-apiserver 证书文件
-
+```
+   
+2. 生成 kube-apiserver 证书文件
+   
       ```shell
       [root@node-05 certs]# cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=server apiserver-csr.json |cfssl-json -bare apiserver
-      ```
-
-   3. 检查证书文件
-
+   ```
+   
+3. 检查证书文件
+   
       ```shell
       [root@node-05 certs]# ll
       总用量 68
@@ -1581,9 +1582,9 @@ netstat -lntup|grep nginx
   --leader-elect true \
   --log-dir /data/logs/kubernetes/kube-controller-manager \
   --master http://127.0.0.1:8080 \
-  --service-account-private-key-file ./cert/ca-key.pem \
+  --service-account-private-key-file ./certs/ca-key.pem \
   --service-cluster-ip-range 192.168.0.0/16 \
-  --root-ca-file ./cert/ca.pem \
+  --root-ca-file ./certs/ca.pem \
   --v 2 
 ```
 
@@ -1722,6 +1723,609 @@ kube-scheduler-node-03            STARTING
 ```shell
 /etc/supervisord.d/kube-scheduler.ini
 [program:kube-scheduler-node-04]
+```
+
+#### 6.6.6 检查 master节点
+
+##### 建立 kubectl 软连接
+
+```shell
+[root@node-03 ~]# ln -s /opt/kubernetes/server/bin/kubectl /usr/bin/kubectl
+```
+
+##### 检查 master 节点
+
+```shell
+[root@node-03 ~]# kubectl get cs
+NAME                 STATUS    MESSAGE              ERROR
+scheduler            Healthy   ok                   
+controller-manager   Healthy   ok                   
+etcd-0               Healthy   {"health": "true"}   
+etcd-2               Healthy   {"health": "true"}   
+etcd-1               Healthy   {"health": "true"} 
+```
+
+
+
+### 6.7 部署 node 节点
+
+#### 6.7.1 部署 kubelet
+
+##### 1）集群架构
+
+| 主机名  | 角色    | IP地址       |
+| ------- | ------- | ------------ |
+| node-03 | kubelet | 10.10.50.233 |
+| node-04 | kubelet | 10.10.50.99  |
+
+以 node-03 为例
+
+##### 2）签发 kubelet 证书
+
+在 node-05 上
+
+1. 创建生成证书 crs 的 json 配置文件
+
+   ```shell
+   [root@node-05 ~]# vi /opt/certs/kubelet-csr.json
+   ```
+
+   ```json
+   {
+       "CN": "k8s-kubelet",
+       "hosts": [
+       "127.0.0.1",
+       "10.10.50.50",
+       "10.10.50.20",
+       "10.10.50.40",
+       "10.10.50.233",
+       "10.10.50.99"
+       ],
+       "key": {
+           "algo": "rsa",
+           "size": 2048
+       },
+       "names": [
+           {
+               "C": "CN",
+               "ST": "beijing",
+               "L": "beijing",
+               "O": "thtf",
+               "OU": "ops"
+           }
+       ]
+   }
+   ```
+
+   2. 生成 kubelet 证书
+
+   ```shell
+   [root@node-05 certs]# cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=server kubelet-csr.json | cfssl-json -bare kubelet
+   2020/04/15 09:38:02 [INFO] generate received request
+   2020/04/15 09:38:02 [INFO] received CSR
+   2020/04/15 09:38:02 [INFO] generating key: rsa-2048
+   2020/04/15 09:38:02 [INFO] encoded CSR
+   2020/04/15 09:38:02 [INFO] signed certificate with serial number 602300016453030103556289231370796933909552612578
+   2020/04/15 09:38:02 [WARNING] This certificate lacks a "hosts" field. This makes it unsuitable for
+   websites. For more information see the Baseline Requirements for the Issuance and Management
+   of Publicly-Trusted Certificates, v.1.1.6, from the CA/Browser Forum (https://cabforum.org);
+   specifically, section 10.2.3 ("Information Requirements").
+   ```
+
+   3. 检查生成的证书文件
+
+   ```shell
+   [root@node-05 certs]# ll
+   -rw-r--r-- 1 root root 1086 4月  15 09:38 kubelet.csr
+   -rw-r--r-- 1 root root  397 4月  15 09:33 kubelet-csr.json
+   -rw------- 1 root root 1679 4月  15 09:38 kubelet-key.pem
+   -rw-r--r-- 1 root root 1432 4月  15 09:38 kubelet.pem
+   ```
+
+##### 3）拷贝证书文件到各个节点, 并创建配置
+
+在 node-03 上
+
+1. 拷贝文件
+
+	```shell
+	[root@node-03 ~ ]# cd /opt/kubernetes/server/bin/certs/
+	[root@node-03 certs]# scp node-05:/opt/certs/kubelet.pem .
+	[root@node-03 certs]# scp node-05:/opt/certs/kubelet-key.pem .
+	```
+
+2. 创建配置
+
+   注意：在 conf 目录下, 没有就创建
+
+   ```shell
+   mkdir /opt/kubernetes/server/bin/conf
+   ```
+
+   **set-cluster**
+
+   ```shell
+   [root@node-03 conf]# kubectl config set-cluster myk8s \
+   --certificate-authority=/opt/kubernetes/server/bin/certs/ca.pem \
+   --embed-certs=true \
+   --server=https://10.10.50.10:7443 \
+   --kubeconfig=kubelet.kubeconfig
+   ```
+
+   **set-credentials**
+
+   ```shell
+   [root@node-03 conf]# kubectl config set-credentials k8s-node \
+   --client-certificate=/opt/kubernetes/server/bin/certs/client.pem \
+   --client-key=/opt/kubernetes/server/bin/certs/client-key.pem \
+   --embed-certs=true \
+   --kubeconfig=kubelet.kubeconfig
+   ```
+
+   **set-context**
+
+   ```shell
+   [root@node-03 conf]# kubectl config set-context myk8s-context \
+   --cluster=myk8s \
+   --user=k8s-node \
+   --kubeconfig=kubelet.kubeconfig
+   ```
+
+   **use-context**
+
+   ```shell
+   [root@node-03 conf]# kubectl config use-context myk8s-context --kubeconfig=kubelet.kubeconfig
+   ```
+
+   **查看生成的kubelet.kubeconfig**
+
+   ```shell
+   [root@node-03 conf]# ll
+   总用量 8
+   -rw------- 1 root root 6189 4月  15 15:17 kubelet.kubeconfig
+   ```
+
+   **k8s-node.yaml**
+
+   a. 创建配置文件
+
+   ```shell
+   [root@node-03 conf]# vi k8s-node.yaml
+   ```
+
+   ```yaml
+   apiVersion: rbac.authorization.k8s.io/v1
+   kind: ClusterRoleBinding
+   metadata:
+     name: k8s-node
+   roleRef:
+     apiGroup: rbac.authorization.k8s.io
+     kind: ClusterRole
+     name: system:node
+   subjects:
+   - apiGroup: rbac.authorization.k8s.io
+     kind: User
+     name: k8s-node
+   ```
+
+   b. 应用资源配置
+
+   ```shell
+   [root@node-03 conf]# kubectl create -f k8s-node.yaml
+   ```
+
+   c. 查看集群角色和角色属性
+
+   ```shell
+   [root@node-03 conf]# kubectl get clusterrolebinding k8s-node
+   NAME       AGE
+   k8s-node   32s
+   [root@node-03 conf]# kubectl get clusterrolebinding k8s-node -o yaml
+   apiVersion: rbac.authorization.k8s.io/v1
+   kind: ClusterRoleBinding
+   metadata:
+     creationTimestamp: "2020-04-15T07:22:34Z"
+     name: k8s-node
+     resourceVersion: "55622"
+     selfLink: /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/k8s-node
+     uid: f98c058b-e544-43e2-b926-6bda476a39fb
+   roleRef:
+     apiGroup: rbac.authorization.k8s.io
+     kind: ClusterRole
+     name: system:node
+   subjects:
+   - apiGroup: rbac.authorization.k8s.io
+     kind: User
+     name: k8s-node
+   ```
+
+   **将 node-03 上生成的 kubelet.kubeconfig 拷贝到 node-04 的 conf 中**
+
+   在 node-04 上创建 conf 目录, 把 node-03 生成的kubelet.kubeconfig直接拷贝到目标服务器
+
+   ```shell
+   [root@node-04 ~]# mkdir /opt/kubernetes/server/bin/conf
+   [root@node-04 ~]# cd /opt/kubernetes/server/bin/conf/
+   [root@node-04 conf]# scp node-03:/opt/kubernetes/server/bin/conf/kubelet.kubeconfig .
+   ```
+
+   同时, 将从 node-05 上 kubelet 对应的证书文件拷贝到目标服务器 /opt/kubernetes/server/bin/certs 目录下
+
+   ```shell
+   [root@node-04 certs]# scp node-05:/opt/certs/kubelet.pem .
+   [root@node-04 certs]# scp node-05:/opt/certs/kubelet-key.pem .
+   ```
+
+   
+
+   查看集群角色和角色属性
+
+   ```shell
+   [root@node-04 conf]# kubectl get clusterrolebinding k8s-node
+   NAME       AGE
+   k8s-node   35m
+   [root@node-04 conf]# kubectl get clusterrolebinding k8s-node -o yaml
+   apiVersion: rbac.authorization.k8s.io/v1
+   kind: ClusterRoleBinding
+   metadata:
+     creationTimestamp: "2020-04-15T07:22:34Z"
+     name: k8s-node
+     resourceVersion: "55622"
+     selfLink: /apis/rbac.authorization.k8s.io/v1/clusterrolebindings/k8s-node
+     uid: f98c058b-e544-43e2-b926-6bda476a39fb
+   roleRef:
+     apiGroup: rbac.authorization.k8s.io
+     kind: ClusterRole
+     name: system:node
+   subjects:
+   - apiGroup: rbac.authorization.k8s.io
+     kind: User
+     name: k8s-node
+   ```
+
+   
+
+##### 4）准备 pause 基础镜像
+
+在 node-05 上
+
+a. 下载 pause 镜像
+
+```shell
+[root@node-05 ~]# docker pull kubernetes/pause
+```
+
+b. 上传到 docker 私有仓库 harbor 中
+
+```shell
+[root@node-05 ~]# docker images -a | grep pause
+kubernetes/pause                latest                     f9d5de079539        5 years ago         240kB
+[root@node-05 ~]# docker tag f9d5de079539 harbor.thtf.com/public/pause:latest
+[root@node-05 ~]# docker images -a | grep pause
+kubernetes/pause                latest                     f9d5de079539        5 years ago         240kB
+harbor.thtf.com/public/pause    latest                     f9d5de079539        5 years ago         240kB
+[root@node-05 ~]# docker push harbor.thtf.com/public/pause:latest
+```
+
+
+
+##### 5）创建 kubelet 启动脚本
+
+在 node-03 上
+
+```shell
+[root@node-03 ~]# vi /opt/kubernetes/server/bin/kubelet.sh
+```
+
+```shell
+#!/bin/sh
+./kubelet \
+  --anonymous-auth=false \
+  --cgroup-driver systemd \
+  --cluster-dns 192.168.0.2 \
+  --cluster-domain cluster.local \
+  --runtime-cgroups=/systemd/system.slice \
+  --kubelet-cgroups=/systemd/system.slice \
+  --fail-swap-on="false" \
+  --client-ca-file ./certs/ca.pem \
+  --tls-cert-file ./certs/kubelet.pem \
+  --tls-private-key-file ./certs/kubelet-key.pem \
+  --hostname-override node-03 \
+  --image-gc-high-threshold 20 \
+  --image-gc-low-threshold 10 \
+  --kubeconfig ./conf/kubelet.kubeconfig \
+  --log-dir /data/logs/kubernetes/kube-kubelet \
+  --pod-infra-container-image harbor.thtf.com/public/pause:latest \
+  --root-dir /data/kubelet
+```
+
+授权, 创建目录
+
+```shell
+[root@node-03 ~]# chmod +x /opt/kubernetes/server/bin/kubelet.sh 
+[root@node-03 ~]# mkdir -p /data/logs/kubernetes/kube-kubelet   /data/kubelet
+```
+
+##### 6）创建 supervisor 配置
+
+```shell
+[root@node-03 ~]# vi /etc/supervisord.d/kube-kubelet.ini
+```
+
+```ini
+[program:kube-kubelet-node-03]
+command=/opt/kubernetes/server/bin/kubelet.sh     ; the program (relative uses PATH, can take args)
+numprocs=1                                        ; number of processes copies to start (def 1)
+directory=/opt/kubernetes/server/bin              ; directory to cwd to before exec (def no cwd)
+autostart=true                                    ; start at supervisord start (default: true)
+autorestart=true                                  ; retstart at unexpected quit (default: true)
+startsecs=30                                      ; number of secs prog must stay running (def. 1)
+startretries=3                                    ; max # of serial start failures (default 3)
+exitcodes=0,2                                     ; 'expected' exit codes for process (default 0,2)
+stopsignal=QUIT                                   ; signal used to kill process (default TERM)
+stopwaitsecs=10                                   ; max num secs to wait b4 SIGKILL (default 10)
+user=root                                         ; setuid to this UNIX account to run the program
+redirect_stderr=true                              ; redirect proc stderr to stdout (default false)
+stdout_logfile=/data/logs/kubernetes/kube-kubelet/kubelet.stdout.log   ; stderr log path, NONE for none; default AUTO
+stdout_logfile_maxbytes=64MB                      ; max # logfile bytes b4 rotation (default 50MB)
+stdout_logfile_backups=4                          ; # of stdout logfile backups (default 10)
+stdout_capture_maxbytes=1MB                       ; number of bytes in 'capturemode' (default 0)
+stdout_events_enabled=false                       ; emit events on stdout writes (default false)
+```
+
+##### 7）启动服务并检查
+
+```shell
+[root@node-03 ~]# supervisorctl  update
+[root@node-03 ~]# supervisorctl  status
+```
+
+##### 同理, node-04 上按 5~7 步骤执行
+
+不同的地方
+
+```shell
+/opt/kubernetes/server/bin/kubelet.sh
+--hostname-override node-04
+##########
+/etc/supervisord.d/kube-kubelet.ini
+[program:kube-kubelet-node-04]
+```
+
+
+
+#### 6.7.2 部署 kube-proxy
+
+##### 1）集群架构
+
+| 主机名  | 角色    | IP地址       |
+| ------- | ------- | ------------ |
+| node-03 | kubelet | 10.10.50.233 |
+| node-04 | kubelet | 10.10.50.99  |
+
+以 node-03 为例
+
+##### 2）签发 kube-proxy 证书
+
+在 node-05 上
+
+a. 创建生成证书 csr 的 json 配置文件
+
+```shell
+[root@node-05 certs]# vi kube-proxy-csr.json
+```
+
+```json
+{
+    "CN": "system:kube-proxy",
+    "key": {
+        "algo": "rsa",
+        "size": 2048
+    },
+    "names": [
+        {
+            "C": "CN",
+            "ST": "beijing",
+            "L": "beijing",
+            "O": "thtf",
+            "OU": "ops"
+        }
+    ]
+}
+```
+
+b. 生成 kube-proxy 证书文件
+
+```shell
+[root@node-05 certs]# cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client kube-proxy-csr.json |cfssl-json -bare kube-proxy-client
+```
+
+c. 检查生成的证书文件
+
+```shell
+-rw-r--r-- 1 root root 1009 4月  17 15:35 kube-proxy-client.csr
+-rw------- 1 root root 1679 4月  17 15:35 kube-proxy-client-key.pem
+-rw-r--r-- 1 root root 1375 4月  17 15:35 kube-proxy-client.pem
+-rw-r--r-- 1 root root  269 4月  17 15:35 kube-proxy-csr.json
+```
+
+
+
+##### 3）拷贝证书文件到各个节点, 并创建配置
+
+在 node-03 上
+
+1. 拷贝证书文件
+
+   ```shell
+   [root@node-03 ~]# cd /opt/kubernetes/server/bin/certs/
+   [root@node-03 certs]# scp node-05:/opt/certs/kube-proxy-client.pem .
+   [root@node-03 certs]# scp node-05:/opt/certs/kube-proxy-client-key.pem .
+   ```
+
+2. 创建配置
+
+   进入：/opt/kubernetes/server/bin/conf
+
+   **set-cluster**
+
+   ```shell
+   [root@node-03 conf]# kubectl config set-cluster myk8s \
+   --certificate-authority=/opt/kubernetes/server/bin/certs/ca.pem \
+   --embed-certs=true \
+   --server=https://10.10.50.10:7443 \
+   --kubeconfig=kube-proxy.kubeconfig
+   ```
+
+   **set-credentials**
+
+   ```shell
+   [root@node-03 certs]# kubectl config set-credentials kube-proxy \
+   --client-certificate=/opt/kubernetes/server/bin/certs/kube-proxy-client.pem \
+   --client-key=/opt/kubernetes/server/bin/certs/kube-proxy-client-key.pem \
+   --embed-certs=true \
+   --kubeconfig=kube-proxy.kubeconfig
+   ```
+
+   **set-context**
+
+   ```shell
+   [root@node-03 certs]# kubectl config set-context myk8s-context \
+   --cluster=myk8s \
+   --user=kube-proxy \
+   --kubeconfig=kube-proxy.kubeconfig
+   ```
+
+   **use-context**
+
+   ```shell
+   [root@node-03 certs]# kubectl config use-context myk8s-context --kubeconfig=kube-proxy.kubeconfig
+   ```
+
+   
+
+   **将 node-03 上生成的 kube-proxy.kubeconfig 到 node-04 的conf目录下**
+
+   ```shell
+   [root@node-04 ~]# cd /opt/kubernetes/server/bin/conf/
+   [root@node-04 conf]# scp node-03:/opt/kubernetes/server/bin/conf/kube-proxy.kubeconfig .
+   ```
+
+   同时, 将从 node-05 上 kubelet 对应的证书文件拷贝到目标服务器 /opt/kubernetes/server/bin/certs 目录下
+
+   ```shell
+   [root@node-04 ~]# cd /opt/kubernetes/server/bin/certs/
+   [root@node-04 certs]# scp node-05:/opt/certs/kube-proxy-client.pem .
+   [root@node-04 certs]# scp node-05:/opt/certs/kube-proxy-client-key.pem .
+   ```
+
+
+##### 4）创建 kube-proxy 启动脚本
+
+   在 node-03 上
+
+   a. 加载 ipvs 模块
+
+   ```shell
+   [root@node-03 ~]# lsmod | grep ip_vs
+   [root@node-03 ~]# vi /root/ipvs.sh
+   ```
+
+   ```shell
+   #!/bin/bash
+   ipvs_mods_dir="/usr/lib/modules/$(uname -r)/kernel/net/netfilter/ipvs"
+   for i in $(ls $ipvs_mods_dir|grep -o "^[^.]*")
+   do
+     /sbin/modinfo -F filename $i &>/dev/null
+     if [ $? -eq 0 ];then
+       /sbin/modprobe $i
+     fi
+   done    
+   ```
+
+   ```shell
+   [root@node-03 ~]# chmod +x /root/ipvs.sh 
+   [root@node-03 ~]# sh /root/ipvs.sh 
+   [root@node-03 ~]# lsmod | grep ip_vs
+   ```
+
+   b. 创建启动脚本
+
+   ```shell
+   [root@node-03 ~]# vi /opt/kubernetes/server/bin/kube-proxy.sh
+   ```
+
+   ```shell
+#!/bin/sh
+./kube-proxy \
+--cluster-cidr 172.7.0.0/16 \
+--hostname-override node-03\
+--proxy-mode=ipvs \
+--ipvs-scheduler=nq \
+--kubeconfig ./conf/kube-proxy.kubeconfig	
+   ```
+
+   c. 授权, 创建目录
+
+```shell
+[root@node-03 ~]# ls -l /opt/kubernetes/server/bin/conf/|grep kube-proxy
+[root@node-03 ~]# chmod +x /opt/kubernetes/server/bin/kube-proxy.sh 
+[root@node-03 ~]# mkdir -p /data/logs/kubernetes/kube-proxy
+```
+
+
+
+##### 5）创建 supervisor 配置
+
+```shell
+[root@node-03 ~]# vi /etc/supervisord.d/kube-proxy.ini
+```
+
+```ini
+[program:kube-proxy-node-03]
+command=/opt/kubernetes/server/bin/kube-proxy.sh                     ; the program (relative uses PATH, can take args)
+numprocs=1                                                           ; number of processes copies to start (def 1)
+directory=/opt/kubernetes/server/bin                                 ; directory to cwd to before exec (def no cwd)
+autostart=true                                                       ; start at supervisord start (default: true)
+autorestart=true                                                     ; retstart at unexpected quit (default: true)
+startsecs=30                                                         ; number of secs prog must stay running (def. 1)
+startretries=3                                                       ; max # of serial start failures (default 3)
+exitcodes=0,2                                                        ; 'expected' exit codes for process (default 0,2)
+stopsignal=QUIT                                                      ; signal used to kill process (default TERM)
+stopwaitsecs=10                                                      ; max num secs to wait b4 SIGKILL (default 10)
+user=root                                                            ; setuid to this UNIX account to run the program
+redirect_stderr=true                                                 ; redirect proc stderr to stdout (default false)
+stdout_logfile=/data/logs/kubernetes/kube-proxy/proxy.stdout.log     ; stderr log path, NONE for none; default AUTO
+stdout_logfile_maxbytes=64MB                                         ; max # logfile bytes b4 rotation (default 50MB)
+stdout_logfile_backups=4                                             ; # of stdout logfile backups (default 10)
+stdout_capture_maxbytes=1MB                                          ; number of bytes in 'capturemode' (default 0)
+stdout_events_enabled=false                                          ; emit events on stdout writes (default false)
+```
+
+
+
+##### 6）启动服务并检查
+
+```shell
+[root@node-03 ~]# supervisorctl update
+[root@node-03 ~]# supervisorctl status
+[root@node-03 ~]# yum install ipvsadm -y
+[root@node-03 ~]# ipvsadm -Ln
+[root@node-03 ~]# kubectl get svc
+```
+
+
+
+##### 同理, 在 node-04 上按照 4~5 步骤执行
+
+不同的地方
+
+```shell
+/opt/kubernetes/server/bin/kube-proxy.sh
+--hostname-override node-04
+##########
+/etc/supervisord.d/kube-proxy.ini
+[program:kube-proxy-node-04]
 ```
 
 
