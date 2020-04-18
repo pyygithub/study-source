@@ -2314,8 +2314,6 @@ stdout_events_enabled=false                                          ; emit even
 [root@node-03 ~]# kubectl get svc
 ```
 
-
-
 ##### 同理, 在 node-04 上按照 4~5 步骤执行
 
 不同的地方
@@ -2327,6 +2325,43 @@ stdout_events_enabled=false                                          ; emit even
 /etc/supervisord.d/kube-proxy.ini
 [program:kube-proxy-node-04]
 ```
+
+### 6.8 验证 kubernetes 集群
+
+#### 6.8.1 **在任意一个节点上创建一个资源配置清单**
+
+```shell
+vi /root/nginx-ds.yaml
+```
+
+```shell
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: nginx-ds
+spec:
+  template:
+    metadata:
+      labels:
+        app: nginx-ds
+    spec:
+      containers:
+      - name: my-nginx
+        image: harbor.thtf.com/public/nginx:v1.7.9
+        ports:
+        - containerPort: 80
+```
+
+#### 6.8.2 **应用资源配置，并检查**
+
+```shell
+kubectl create -f /root/nginx-ds.yaml
+kubectl get pods
+kubectl get pods -o wide
+curl 172.7.21.2
+```
+
+
 
 
 
