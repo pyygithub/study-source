@@ -1,209 +1,6 @@
-# Kubernetes
+# Kubernetes 环境搭建
 
-## 第 1 章 Kubernetes 概述
-
-![](./img/k8s.png)
-
-- 官网：https://kubernetes.io
-
-- Github：https://github.com/kubernetes/kubernetes
-
-- 由来：谷歌的Borg系统, 后经Go语言重写并捐献给CNCF基金会开源
-
-- 含义：词根源于希腊语：舵手/飞行员，K8S -》K 8个字母 S
-
-- 重要作用：开源的容器编排框架工具（生态极其丰富）
-
-- 学习意义：解决跑裸docker 的若干痛点
-
-  > 使用Docker容器话封装应用程序的缺点：
-  >
-  > - 单击使用, 无法有效集群
-  > - 随着容器数量的上升, 管理成本攀升
-  > - 没有有效的容灾/自愈机制
-  > - 没有预设编排模板, 无法实现快速、大规模容器调度
-  > - 没有统一的配置管理中心工具
-  > - 没有容器生命周期管理工具
-  > - 没有图形化运维管理工具
-  > - ...
-  
-  
-
-## 第 2 章 Kubernetes 优势
-
-- 自动装箱, 水平扩展, 自我修复
-- 服务发现和负载均衡
-- 自动发布（默认滚动发布模式）和回滚
-- 集中化配置管理和秘钥管理
-- 存储编排
-- 任务批处理运行
-- ...
-
-
-
-## 第 3 章 Kubernetes 快速入门
-
-### 3.1 四组基本概念
-
-- Pod/Pod控制器
-
-- Name/Namespace
-
-- Label/Label选择器
-
-- Service/Ingress
-
-  
-
-#### 3.1.1 Pod/Pod控制器
-
-- **Pod**
-
-  - Pod是K8S里能够被运行的最小的逻辑单元（原子单元）；
-  - 1个Pod里面可以运行多个容器, 它们共享UTS+NET+IPC名字空间；
-
-  - 可以把Pod理解成豌豆荚, 而同一个Pod内的每个容器是一颗颗豌豆；
-
-  - 一个Pod里运行多个容器, 又叫：边车（SideCar）模式。
-
-- **Pod控制器**
-
-  - Pod控制器是Pod启动的一种模板, 用来保证在 K8S 里启动的 Pod 应始终按照人们的预期运行 (副本数、生命周期、健康状态检查...)。
-
-  - K8S 内提供了众多的 Pod 控制器，常用的有以下几种：
-
-    - Deployment
-    - DaemonSet
-    - ReplicaSet
-    - StatefulSet
-    - Job
-    - Cronjob
-
-    
-
-#### 3.1.2 Name/Namespace
-
-- **Name**
-  - 由于 K8S 内部, 使用“资源”来定义每一种逻辑概念（功能）故每种“资源”, 都应该有自己的“名称”。
-  - “资源”有 api 版本（apiVersion）类别（kind）、元数据（metadata）、定义清单（spec）、状态（status）等配置信息。
-  - “名称”通常定义在“资源”的“元数据“信息里。
-- **Namespace**
-  - 随着项目增多、人员增加、集群规模的扩大, 需要一种能够隔离 K8S 内各种“资源”的方法, 这就是名称空间。
-  - 名称空间可以理解为 K8S 内部的虚拟集群组。
-  - 不同名称空间内的“资源”, 名称可以相同, 相同名称空间内的同种“资源”, “名称” 不能相同。
-  - 合理的使用 K8S 的名称空间使得集群管理员能够更好的对交付到 K8S 里的服务器进行分类管理和浏览。
-  - K8S里默认存在的名称空间有：default、kube-system、kube-public。
-  - 查询 K8S 里特定“资源”要带上相应的名称空间。
-
-
-
-#### 3.1.3 Label/Label选择器
-
-- **Label**
-  - 标签是 K8S 特色的管理方式, 便于分类管理资源对象。
-  - 一个标签可以对应多个资源, 一个资源也可以有多个标签, 它们是多对多的关系。
-  - 一个资源拥有多个标签, 可以实现不同维度的管理。
-  - 标签的组成: key=value。
-  - 与标签类似的还有一种“注释”（annotations）。
-- **Label 选择器**
-  - 给资源打上标签后, 可以使用标签选择器过滤指定的标签。
-  - 标签选择器目前有两个：基于等值关系（等于、不等于）和基于集合关系（属于、不属于、存在）。
-  - 许多资源支持内嵌标签选择器字段
-    - matchLabels
-    - matchExpressions
-
-
-
-#### 3.1.4 Service/Ingress
-
-- **Service**
-  - 在 K8S 的世界里, 虽然没个 Pod 都会被分配一个单独的 IP 地址, 但这个 IP 地址会随着 Pod 的销毁而消失。
-  - Service（服务）就是用来解决这个问题的核心概念。
-  - 一个 Service 可以看作一组提供相同服务的 Pod 的对外访问接口。
-  - Service 作用于哪些 Pod 是通过标签选择器来定义的。
-- **Ingress**
-  - Ingress 是 K8S 集群里工作在 OSI 网络参考模型下, 第 7 层的应用, 对外暴露的接口。
-  - Service 只能进行 L4 浏览调度, 表现形式是 ip+port。
-  - Ingress 则可以调度不同的业务域、不同 URL 访问路径的业务流量。
-
-
-
-## 第 4 章 Kubernetes 核心功能
-
-### 4.1 调度
-
-Kubernetes 可以把用户提交的容器放到 Kubernetes 管理的集群的某一台节点上去。Kubernetes 的调度器是执行这项能力的组件，它会观察正在被调度的这个容器的大小、规格。
-
-比如说它所需要的 CPU 以及它所需要的 memory，然后在集群中找一台相对比较空闲的机器来进行一次 placement，也就是一次放置的操作。在这个例子中，它可能会把红颜色的这个容器放置到第二个空闲的机器上，来完成一次调度的工作。
-
-![](./img/k8s_scheduler.png)
-
-
-
-### 4.2 自动修复
-
-Kubernetes 有一个节点健康检查的功能，它会监测这个集群中所有的宿主机，当宿主机本身出现故障，或者软件出现故障的时候，这个节点健康检查会自动对它进行发现。
-
-下面 Kubernetes 会把运行在这些失败节点上的容器进行自动迁移，迁移到一个正在健康运行的宿主机上，来完成集群内容器的一个自动恢复。
-
-![](./img/k8s_fix.png)
-
-### 4.3 水平伸缩
-
-Kubernetes 有业务负载检查的能力，它会监测业务上所承担的负载，如果这个业务本身的 CPU 利用率过高，或者响应时间过长，它可以对这个业务进行一次扩容。
-
-比如说在下面的例子中，黄颜色的过度忙碌，Kubernetes 就可以把黄颜色负载从一份变为三份。接下来，它就可以通过负载均衡把原来打到第一个黄颜色上的负载平均分到三个黄颜色的负载上去，以此来提高响应的时间。
-
-![](./img/k8s_expend.png)
-
-
-
-## 第 5 章 Kubernetes 的架构
-
-Kubernetes 架构是一个比较典型的二层架构和 server-client 架构。Master 作为中央的管控节点，会去与 Node 进行一个连接。
-
-所有 UI 的、clients、这些 user 侧的组件，只会和 Master 进行连接，把希望的状态或者想执行的命令下发给 Master，Master 会把这些命令或者状态下发给相应的节点，进行最终的执行。
-
-![](./img/k8s_schdule.png)
-
-
-
-### 5.1 Master
-
-Kubernetes 的 Master 包含四个主要的组件：API Server、Controller、Scheduler 以及 etcd。如下图所示：
-
-![](./img/k8s_master.png)
-
-
-
-- **API Server：**顾名思义是用来处理 API 操作的，Kubernetes 中所有的组件都会和 API Server 进行连接，组件与组件之间一般不进行独立的连接，都依赖于 API Server 进行消息的传送；
-- **Controller：**是控制器，它用来完成对集群状态的一些管理。比如刚刚我们提到的两个例子之中，第一个自动对容器进行修复、第二个自动进行水平扩张，都是由 Kubernetes 中的 Controller 来进行完成的；
-- **Scheduler：**是调度器，“调度器”顾名思义就是完成调度的操作，就是我们刚才介绍的第一个例子中，把一个用户提交的 Container，依据它对 CPU、对 memory 请求大小，找一台合适的节点，进行放置；
-- **etcd：**是一个分布式的一个存储系统，API Server 中所需要的这些原信息都被放置在 etcd 中，etcd 本身是一个高可用系统，通过 etcd 保证整个 Kubernetes 的 Master 组件的高可用性。
-
-我们刚刚提到的 API Server，它本身在部署结构上是一个可以水平扩展的一个部署组件；Controller 是一个可以进行热备的一个部署组件，它只有一个 active，它的调度器也是相应的，虽然只有一个 active，但是可以进行热备。
-
-
-
-### 5.2 **Node**
-
-Kubernetes 的 Node 是真正运行业务负载的，每个业务负载会以 Pod 的形式运行。一个 Pod 中运行的一个或者多个容器，真正去运行这些 Pod 的组件的是叫做 **kubelet**，也就是 Node 上最为关键的组件，它通过 API Server 接收到所需要 Pod 运行的状态，然后提交到我们下面画的这个 Container Runtime 组件中。
-
-![](./img/k8s_node.png)
-
-
-
-在 OS 上去创建容器所需要运行的环境，最终把容器或者 Pod 运行起来，也需要对存储跟网络进行管理。Kubernetes 并不会直接进行网络存储的操作，他们会靠 Storage Plugin 或者是网络的 Plugin 来进行操作。用户自己或者云厂商都会去写相应的 **Storage Plugin** 或者 **Network Plugin**，去完成存储操作或网络操作。
-
-在 Kubernetes 自己的环境中，也会有 Kubernetes 的 Network，它是为了提供 Service network 来进行搭网组网的。真正完成 service 组网的组件的是 **Kube-proxy**，它是利用了 iptable 的能力来进行组建 Kubernetes 的 Network，就是 cluster network，以上就是 Node 上面的四个组件。
-
-Kubernetes 的 Node 并不会直接和 user 进行 interaction，它的 interaction 只会通过 Master。而 User 是通过 Master 向节点下发这些信息的。Kubernetes 每个 Node 上，都会运行我们刚才提到的这几个组件。
-
-下面我们以一个例子再去看一下 Kubernetes 架构中的这些组件，是如何互相进行 interaction 的。
-
-
-
-## 第 6 章 环境搭建
+## 第 6 章 环境搭建（二进制）
 
 ### 6.1 准备环境
 
@@ -521,7 +318,7 @@ bip要根据宿主机ip变化
 mkdir -p /data/docker
 systemctl start docker
 systemctl enable docker
-docker --version
+l
 ```
 
 
@@ -1174,14 +971,15 @@ vi /opt/certs/client-csr.json
            }
        ]
    }
+   ```
 ```
    
 2. 生成 kube-apiserver 证书文件
    
       ```shell
       [root@node-05 certs]# cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=server apiserver-csr.json |cfssl-json -bare apiserver
-   ```
-   
+```
+
 3. 检查证书文件
    
       ```shell
@@ -2361,7 +2159,1290 @@ kubectl get pods -o wide
 curl 172.7.21.2
 ```
 
+## 第 7 章 环境搭建（kubeadm）
+
+### 7.1 环境要求
+
+在开始之前，部署Kubernetes集群机器需要满足以下几个条件：
+
+- 一台或多台机器，操作系统 CentOS7.x-86_x64
+
+- 硬件配置：2GB或更多RAM，2个CPU或更多CPU，硬盘30GB或更多
+
+- 集群中所有机器之间网络互通
+
+- 可以访问外网，需要拉取镜像
+
+- 禁止swap分区
 
 
 
+### 7.2 环境准备
+
+- 关闭 SELinux 和 firewalld
+
+```shell
+# systemctl stop firewalld               #临时关闭
+# systemctl disable firewalld            #永久关闭,即设置开机的时候不自动启动
+```
+
+```
+永久关闭selinux可以使用vi命令打开/etc/sysconfig/selinux 文件将SELINUXTYPE=(disable或permissive）
+```
+
+永久关闭selinux可以使用vi命令打开/etc/sysconfig/selinux 文件将SELINUXTYPE=(disable或permissive）
+
+- 关闭 swap
+
+```shell
+# swapoff -a												# 临时关闭
+# vi /etc/fstab 										# 永久
+```
+
+- 添加主机名与IP对应关系（记得设置主机名）
+
+```shell
+# cat /etc/hosts
+192.168.31.61 k8s-master
+192.168.31.62 k8s-node1
+192.168.31.63 k8s-node2
+```
+
+- 将桥接的IPv4流量传递到iptables的链
+
+```shell
+cat > /etc/sysctl.d/k8s.conf << EOF
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+EOF
+```
+
+
+
+### 7.3 所有节点安装 Docker/kubeadm/kubelet
+
+Kubernetes默认CRI（容器运行时）为Docker，因此先安装Docker。
+
+#### 7.3.1 安装 docker
+
+```shell
+# wget https://mirrors.aliyun.com/docker-ce/linux/centos/docker-ce.repo -O /etc/yum.repos.d/docker-ce.repo
+# yum -y install docker-ce-18.06.1.ce-3.el7
+# systemctl enable docker && systemctl start docker
+# docker --version
+```
+
+
+
+#### 7.3.2 添加阿里云 YUN 软件源
+
+```shell
+# cat > /etc/yum.repos.d/kubernetes.repo << EOF
+[kubernetes]
+name=Kubernetes
+baseurl=https://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+gpgkey=https://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg https://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
+EOF
+```
+
+
+
+#### 7.3.3 安装 kubeadm, kubelet 和 kubectl
+
+由于版本更新频繁，这里指定版本号部署：
+
+```shell
+# yum install -y kubelet-1.15.0 kubeadm-1.15.0 kubectl-1.15.0
+# systemctl enable kubelet
+```
+
+
+
+### 7.4 部署 Kubernetes Master
+
+在192.168.31.61（Master）执行。
+
+```shell
+#kubeadm init \
+--apiserver-advertise-address=192.168.31.61 \
+--image-repository registry.aliyuncs.com/google_containers \
+--kubernetes-version v1.15.0 \
+--service-cidr=10.1.0.0/16 \
+--pod-network-cidr=10.244.0.0/16
+```
+
+由于默认拉取镜像地址k8s.gcr.io国内无法访问，这里指定阿里云镜像仓库地址。
+
+使用kubectl工具：
+
+```shell
+# mkdir -p $HOME/.kube
+# sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+# sudo chown $(id -u):$(id -g) $HOME/.kube/config
+```
+
+```shell
+# kubectl get nodes
+NAME     STATUS     ROLES    AGE     VERSION
+master   NotReady   master   3m40s   v1.15.0
+```
+
+
+
+### 7.5 安装 Pod 网络插件（CNI）
+
+```shell
+#kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/a70459be0084506e4ec919aa1c114638878db11b/Documentation/kube-flannel.yml
+```
+
+如果不能访问，就使用下面文件
+
+```shell
+# vi kube-flannel.yml
+```
+
+```yaml
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: flannel
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/status
+    verbs:
+      - patch
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: flannel
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: flannel
+subjects:
+- kind: ServiceAccount
+  name: flannel
+  namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: flannel
+  namespace: kube-system
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: kube-flannel-cfg
+  namespace: kube-system
+  labels:
+    tier: node
+    app: flannel
+data:
+  cni-conf.json: |
+    {
+      "name": "cbr0",
+      "plugins": [
+        {
+          "type": "flannel",
+          "delegate": {
+            "hairpinMode": true,
+            "isDefaultGateway": true
+          }
+        },
+        {
+          "type": "portmap",
+          "capabilities": {
+            "portMappings": true
+          }
+        }
+      ]
+    }
+  net-conf.json: |
+    {
+      "Network": "10.244.0.0/16",
+      "Backend": {
+        "Type": "vxlan"
+      }
+    }
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: kube-flannel-ds-amd64
+  namespace: kube-system
+  labels:
+    tier: node
+    app: flannel
+spec:
+  template:
+    metadata:
+      labels:
+        tier: node
+        app: flannel
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        beta.kubernetes.io/arch: amd64
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      serviceAccountName: flannel
+      initContainers:
+      - name: install-cni
+        image: quay.io/coreos/flannel:v0.11.0-amd64
+        command:
+        - cp
+        args:
+        - -f
+        - /etc/kube-flannel/cni-conf.json
+        - /etc/cni/net.d/10-flannel.conflist
+        volumeMounts:
+        - name: cni
+          mountPath: /etc/cni/net.d
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      containers:
+      - name: kube-flannel
+        image: quay.io/coreos/flannel:v0.11.0-amd64
+        command:
+        - /opt/bin/flanneld
+        args:
+        - --ip-masq
+        - --kube-subnet-mgr
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "50Mi"
+          limits:
+            cpu: "100m"
+            memory: "50Mi"
+        securityContext:
+          privileged: true
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: run
+          mountPath: /run
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      volumes:
+        - name: run
+          hostPath:
+            path: /run
+        - name: cni
+          hostPath:
+            path: /etc/cni/net.d
+        - name: flannel-cfg
+          configMap:
+            name: kube-flannel-cfg
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: kube-flannel-ds-arm64
+  namespace: kube-system
+  labels:
+    tier: node
+    app: flannel
+spec:
+  template:
+    metadata:
+      labels:
+        tier: node
+        app: flannel
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        beta.kubernetes.io/arch: arm64
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      serviceAccountName: flannel
+      initContainers:
+      - name: install-cni
+        image: quay.io/coreos/flannel:v0.11.0-arm64
+        command:
+        - cp
+        args:
+        - -f
+        - /etc/kube-flannel/cni-conf.json
+        - /etc/cni/net.d/10-flannel.conflist
+        volumeMounts:
+        - name: cni
+          mountPath: /etc/cni/net.d
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      containers:
+      - name: kube-flannel
+        image: quay.io/coreos/flannel:v0.11.0-arm64
+        command:
+        - /opt/bin/flanneld
+        args:
+        - --ip-masq
+        - --kube-subnet-mgr
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "50Mi"
+          limits:
+            cpu: "100m"
+            memory: "50Mi"
+        securityContext:
+          privileged: true
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: run
+          mountPath: /run
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      volumes:
+        - name: run
+          hostPath:
+            path: /run
+        - name: cni
+          hostPath:
+            path: /etc/cni/net.d
+        - name: flannel-cfg
+          configMap:
+            name: kube-flannel-cfg
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: kube-flannel-ds-arm
+  namespace: kube-system
+  labels:
+    tier: node
+    app: flannel
+spec:
+  template:
+    metadata:
+      labels:
+        tier: node
+        app: flannel
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        beta.kubernetes.io/arch: arm
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      serviceAccountName: flannel
+      initContainers:
+      - name: install-cni
+        image: quay.io/coreos/flannel:v0.11.0-arm
+        command:
+        - cp
+        args:
+        - -f
+        - /etc/kube-flannel/cni-conf.json
+        - /etc/cni/net.d/10-flannel.conflist
+        volumeMounts:
+        - name: cni
+          mountPath: /etc/cni/net.d
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      containers:
+      - name: kube-flannel
+        image: quay.io/coreos/flannel:v0.11.0-arm
+        command:
+        - /opt/bin/flanneld
+        args:
+        - --ip-masq
+        - --kube-subnet-mgr
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "50Mi"
+          limits:
+            cpu: "100m"
+            memory: "50Mi"
+        securityContext:
+          privileged: true
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: run
+          mountPath: /run
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      volumes:
+        - name: run
+          hostPath:
+            path: /run
+        - name: cni
+          hostPath:
+            path: /etc/cni/net.d
+        - name: flannel-cfg
+          configMap:
+            name: kube-flannel-cfg
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: kube-flannel-ds-ppc64le
+  namespace: kube-system
+  labels:
+    tier: node
+    app: flannel
+spec:
+  template:
+    metadata:
+      labels:
+        tier: node
+        app: flannel
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        beta.kubernetes.io/arch: ppc64le
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      serviceAccountName: flannel
+      initContainers:
+      - name: install-cni
+        image: quay.io/coreos/flannel:v0.11.0-ppc64le
+        command:
+        - cp
+        args:
+        - -f
+        - /etc/kube-flannel/cni-conf.json
+        - /etc/cni/net.d/10-flannel.conflist
+        volumeMounts:
+        - name: cni
+          mountPath: /etc/cni/net.d
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      containers:
+      - name: kube-flannel
+        image: quay.io/coreos/flannel:v0.11.0-ppc64le
+        command:
+        - /opt/bin/flanneld
+        args:
+        - --ip-masq
+        - --kube-subnet-mgr
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "50Mi"
+          limits:
+            cpu: "100m"
+            memory: "50Mi"
+        securityContext:
+          privileged: true
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: run
+          mountPath: /run
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      volumes:
+        - name: run
+          hostPath:
+            path: /run
+        - name: cni
+          hostPath:
+            path: /etc/cni/net.d
+        - name: flannel-cfg
+          configMap:
+            name: kube-flannel-cfg
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: kube-flannel-ds-s390x
+  namespace: kube-system
+  labels:
+    tier: node
+    app: flannel
+spec:
+  template:
+    metadata:
+      labels:
+        tier: node
+        app: flannel
+    spec:
+      hostNetwork: true
+      nodeSelector:
+        beta.kubernetes.io/arch: s390x
+      tolerations:
+      - operator: Exists
+        effect: NoSchedule
+      serviceAccountName: flannel
+      initContainers:
+      - name: install-cni
+        image: quay.io/coreos/flannel:v0.11.0-s390x
+        command:
+        - cp
+        args:
+        - -f
+        - /etc/kube-flannel/cni-conf.json
+        - /etc/cni/net.d/10-flannel.conflist
+        volumeMounts:
+        - name: cni
+          mountPath: /etc/cni/net.d
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      containers:
+      - name: kube-flannel
+        image: quay.io/coreos/flannel:v0.11.0-s390x
+        command:
+        - /opt/bin/flanneld
+        args:
+        - --ip-masq
+        - --kube-subnet-mgr
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "50Mi"
+          limits:
+            cpu: "100m"
+            memory: "50Mi"
+        securityContext:
+          privileged: true
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: run
+          mountPath: /run
+        - name: flannel-cfg
+          mountPath: /etc/kube-flannel/
+      volumes:
+        - name: run
+          hostPath:
+            path: /run
+        - name: cni
+          hostPath:
+            path: /etc/cni/net.d
+        - name: flannel-cfg
+          configMap:
+            name: kube-flannel-cfg
+```
+
+```shell
+[root@master ~]# kubectl apply -f kube-flannel.yml
+clusterrole.rbac.authorization.k8s.io/flannel created
+clusterrolebinding.rbac.authorization.k8s.io/flannel created
+serviceaccount/flannel created
+configmap/kube-flannel-cfg created
+daemonset.extensions/kube-flannel-ds-amd64 created
+daemonset.extensions/kube-flannel-ds-arm64 created
+daemonset.extensions/kube-flannel-ds-arm created
+daemonset.extensions/kube-flannel-ds-ppc64le created
+daemonset.extensions/kube-flannel-ds-s390x created
+```
+
+检查是否成功
+
+```shell
+[root@master ~]# kubectl get pods -n kube-system
+NAME                             READY   STATUS    RESTARTS   AGE
+coredns-bccdc95cf-2wbsm          1/1     Running   0          17m
+coredns-bccdc95cf-qth9j          1/1     Running   0          17m
+etcd-master                      1/1     Running   0          16m
+kube-apiserver-master            1/1     Running   0          16m
+kube-controller-manager-master   1/1     Running   0          16m
+kube-flannel-ds-amd64-5t8vx      1/1     Running   0          74s
+kube-proxy-drghg                 1/1     Running   0          17m
+kube-scheduler-master            1/1     Running   0          16m
+```
+
+
+
+### 7.6 加入 Kubernetes Node
+
+在192.168.31.62/63（所有Node节点）执行。
+
+向集群添加新节点，执行在kubeadm init输出的kubeadm join命令：
+
+```shell
+#kubeadm join 192.168.31:6443 --token g19l60.r4ai7kxwmtqthjh7 \
+    --discovery-token-ca-cert-hash sha256:3aed74d544f0b37428949a0f0c99f534bb9633e38f971a7af8b3bb9805f838f8 
+```
+
+
+
+### 7.7 测试kubernetes集群
+
+在Kubernetes集群中创建一个pod，验证是否正常运行：
+
+```shell
+# kubectl get nodes
+NAME      STATUS   ROLES    AGE     VERSION
+master    Ready    master   27m     v1.15.0
+node-01   Ready    <none>   3m27s   v1.15.0
+node-02   Ready    <none>   3m21s   v1.15.0
+# kubectl get pods -n kube-system
+NAME                             READY   STATUS    RESTARTS   AGE
+coredns-bccdc95cf-2wbsm          1/1     Running   0          27m
+coredns-bccdc95cf-qth9j          1/1     Running   0          27m
+etcd-master                      1/1     Running   0          26m
+kube-apiserver-master            1/1     Running   0          26m
+kube-controller-manager-master   1/1     Running   0          26m
+kube-flannel-ds-amd64-4f25j      1/1     Running   1          4m17s
+kube-flannel-ds-amd64-5t8vx      1/1     Running   0          11m
+kube-flannel-ds-amd64-826hw      1/1     Running   0          4m23s
+kube-proxy-8n76h                 1/1     Running   0          4m17s
+kube-proxy-9xcrv                 1/1     Running   0          4m23s
+kube-proxy-drghg                 1/1     Running   0          27m
+kube-scheduler-master            1/1     Running   0          26m
+
+```
+
+```shell
+# kubectl create deployment nginx --image=nginx
+# kubectl expose deployment nginx --port=80 --type=NodePort
+# kubectl get pod,svc
+```
+
+访问地址：http://NodeIP:Port 
+
+
+
+### 7.8 部署 Dashboard
+
+```shell
+# kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
+```
+
+不能访问
+
+```shell
+# vi kubernetes-dashboard.yaml
+```
+
+```yaml
+# Copyright 2017 The Kubernetes Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# ------------------- Dashboard Secret ------------------- #
+
+apiVersion: v1
+kind: Secret
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard-certs
+  namespace: kube-system
+type: Opaque
+
+---
+# ------------------- Dashboard Service Account ------------------- #
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard
+  namespace: kube-system
+
+---
+# ------------------- Dashboard Role & Role Binding ------------------- #
+
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kubernetes-dashboard-minimal
+  namespace: kube-system
+rules:
+  # Allow Dashboard to create 'kubernetes-dashboard-key-holder' secret.
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create"]
+  # Allow Dashboard to create 'kubernetes-dashboard-settings' config map.
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create"]
+  # Allow Dashboard to get, update and delete Dashboard exclusive secrets.
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["kubernetes-dashboard-key-holder", "kubernetes-dashboard-certs"]
+  verbs: ["get", "update", "delete"]
+  # Allow Dashboard to get and update 'kubernetes-dashboard-settings' config map.
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["kubernetes-dashboard-settings"]
+  verbs: ["get", "update"]
+  # Allow Dashboard to get metrics from heapster.
+- apiGroups: [""]
+  resources: ["services"]
+  resourceNames: ["heapster"]
+  verbs: ["proxy"]
+- apiGroups: [""]
+  resources: ["services/proxy"]
+  resourceNames: ["heapster", "http:heapster:", "https:heapster:"]
+  verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kubernetes-dashboard-minimal
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: kubernetes-dashboard-minimal
+subjects:
+- kind: ServiceAccount
+  name: kubernetes-dashboard
+  namespace: kube-system
+
+---
+# ------------------- Dashboard Deployment ------------------- #
+
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard
+  namespace: kube-system
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      k8s-app: kubernetes-dashboard
+  template:
+    metadata:
+      labels:
+        k8s-app: kubernetes-dashboard
+    spec:
+      containers:
+      - name: kubernetes-dashboard
+        image: k8s.gcr.io/kubernetes-dashboard-amd64:v1.10.1
+        ports:
+        - containerPort: 8443
+          protocol: TCP
+        args:
+          - --auto-generate-certificates
+          # Uncomment the following line to manually specify Kubernetes API server Host
+          # If not specified, Dashboard will attempt to auto discover the API server and connect
+          # to it. Uncomment only if the default does not work.
+          # - --apiserver-host=http://my-address:port
+        volumeMounts:
+        - name: kubernetes-dashboard-certs
+          mountPath: /certs
+          # Create on-disk volume to store exec logs
+        - mountPath: /tmp
+          name: tmp-volume
+        livenessProbe:
+          httpGet:
+            scheme: HTTPS
+            path: /
+            port: 8443
+          initialDelaySeconds: 30
+          timeoutSeconds: 30
+      volumes:
+      - name: kubernetes-dashboard-certs
+        secret:
+          secretName: kubernetes-dashboard-certs
+      - name: tmp-volume
+        emptyDir: {}
+      serviceAccountName: kubernetes-dashboard
+      # Comment the following tolerations if Dashboard must not be deployed on master
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+
+---
+# ------------------- Dashboard Service ------------------- #
+
+kind: Service
+apiVersion: v1
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard
+  namespace: kube-system
+spec:
+  ports:
+    - port: 443
+      targetPort: 8443
+  selector:
+    k8s-app: kubernetes-dashboard
+```
+
+默认镜像国内无法访问，修改镜像地址为： lizhenliang/kubernetes-dashboard-amd64:v1.10.1
+
+```yaml
+ spec:
+      containers:
+      - name: kubernetes-dashboard
+        image: lizhenliang/kubernetes-dashboard-amd64:v1.10.1
+        ports:
+```
+
+
+
+默认Dashboard只能集群内部访问，修改Service为NodePort类型，暴露到外部：
+
+```yaml
+# ------------------- Dashboard Service ------------------- #
+
+kind: Service
+apiVersion: v1
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard
+  namespace: kube-system
+spec:
+  type: NodePort
+  ports:
+    - port: 443
+      targetPort: 30001
+  selector:
+
+```
+
+重新apply
+
+```shell
+[root@master ~]# kubectl apply -f kubernetes-dashboard.yaml
+secret/kubernetes-dashboard-certs created
+serviceaccount/kubernetes-dashboard created
+role.rbac.authorization.k8s.io/kubernetes-dashboard-minimal created
+rolebinding.rbac.authorization.k8s.io/kubernetes-dashboard-minimal created
+deployment.apps/kubernetes-dashboard created
+service/kubernetes-dashboard created
+
+```
+
+检查
+
+```shell
+[root@master ~]# kubectl get pods -n kube-system
+NAME                                    READY   STATUS             RESTARTS   AGE
+coredns-bccdc95cf-2wbsm                 1/1     Running            0          39m
+coredns-bccdc95cf-qth9j                 1/1     Running            0          39m
+etcd-master                             1/1     Running            0          38m
+kube-apiserver-master                   1/1     Running            0          38m
+kube-controller-manager-master          1/1     Running            0          38m
+kube-flannel-ds-amd64-4f25j             1/1     Running            1          16m
+kube-flannel-ds-amd64-5t8vx             1/1     Running            0          23m
+kube-flannel-ds-amd64-826hw             1/1     Running            0          16m
+kube-proxy-8n76h                        1/1     Running            0          16m
+kube-proxy-9xcrv                        1/1     Running            0          16m
+kube-proxy-drghg                        1/1     Running            0          39m
+kube-scheduler-master                   1/1     Running            0          38m
+kubernetes-dashboard-7d75c474bb-h24l9   0/1     ImagePullBackOff   0          5m4s
+
+```
+
+访问地址：http://NodeIP:30001
+
+创建service account并绑定默认cluster-admin管理员集群角色：
+
+```shell
+[root@master ~]# kubectl create serviceaccount dashboard-admin -n kube-system
+serviceaccount/dashboard-admin created
+[root@master ~]# kubectl create clusterrolebinding dashboard-admin --clusterrole=cluster-admin --serviceaccount=kube-system:dashboard-admin
+clusterrolebinding.rbac.authorization.k8s.io/dashboard-admin created
+[root@master ~]# kubectl describe secrets -n kube-system $(kubectl -n kube-system get secret | awk '/dashboard-admin/{print $1}')
+Name:         dashboard-admin-token-2xfsf
+Namespace:    kube-system
+Labels:       <none>
+Annotations:  kubernetes.io/service-account.name: dashboard-admin
+              kubernetes.io/service-account.uid: c8e442b3-6076-4757-aff9-c6965cd719ab
+
+Type:  kubernetes.io/service-account-token
+
+Data
+====
+ca.crt:     1025 bytes
+namespace:  11 bytes
+token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJkYXNoYm9hcmQtYWRtaW4tdG9rZW4tMnhmc2YiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC5uYW1lIjoiZGFzaGJvYXJkLWFkbWluIiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQudWlkIjoiYzhlNDQyYjMtNjA3Ni00NzU3LWFmZjktYzY5NjVjZDcxOWFiIiwic3ViIjoic3lzdGVtOnNlcnZpY2VhY2NvdW50Omt1YmUtc3lzdGVtOmRhc2hib2FyZC1hZG1pbiJ9.pCpWvb3h5lSB7wOEScQuVo3UbjadGbOim3ues5nEruGb2TFzfHAWX3fb5x7kU8pzpFzRXUG55SCmHstWxdHmG17L54OCByklyHRv-VIaqr-ZgEneHEaqJMLjsPLkWMqRYqmhPT4XE4pwr6pkcm7-bKLHOHjOCenIF-0cXiaE04-3Am6swqMN63h8iOpCz-77k9KxNzcn0hehv-OwsCexNF-CzzSBao4ZWRYNqVzi0IXDoL9XdgcMx63RcW896jqj4qxN5Rja5X8P9DNP9qXutSuVPZLQWU_AQJdlbMMFaGj82WV2Bh0X3__zqTjI6uI5fPQm6iFRK06tfEgCkFKHQg
+
+```
+
+选择 token 登录输入上面生成 token
+
+![](./img/k8s_dashboard.png)
+
+
+
+## 第 8 章 K8S 的核心资源管理方法
+
+管理 K8S 核心资源的三种基本方法：
+
+- 陈述式管理方法 - 主要依赖命令行 CLI 工具进行管理
+
+- 声明式管理方法 - 主要依赖统一资源配置清单（mainifest）进行管理
+
+- GUI 式管理方法 - 主要依赖图形化操作界面（web 页面）进行管理
+
+  
+
+### 8.1 陈述式资源管理方法
+
+#### 8.1.1 管理名称空间资源
+
+##### 查看名称空间
+
+```shell
+[root@master ~]# kubectl get namespaces
+NAME              STATUS   AGE
+default           Active   24h
+kube-node-lease   Active   24h
+kube-public       Active   24h
+kube-system       Active   24h
+```
+
+##### 查看名称空间内的资源
+
+```shell
+[root@master ~]# kubectl get all -n default
+```
+
+##### 创建名称空间
+
+```shell
+[root@master ~]# kubectl create namespace app
+```
+
+##### 删除名称空间
+
+```shell
+[root@master ~]# kubectl delete namespace app
+```
+
+
+
+#### 8.1.2 管理 Deployment 资源
+
+##### 创建 deployment
+
+```shell
+[root@master ~]# kubectl create deployment nginx-dp --image=docker.io/panyangyang/nginx:v1.12.2 -n kube-public
+```
+
+
+
+##### 查看 deployment
+
+- 简单查看
+
+  ```shell
+  [root@master ~]# kubectl get deploy -n kube-public
+  NAME       READY   UP-TO-DATE   AVAILABLE   AGE
+  nginx-dp   1/1     1            1           9m19s
+  ```
+
+- 扩展查看
+
+  ```shell
+  [root@master ~]# kubectl get deploy -o wide -n kube-public
+  NAME       READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES                                SELECTOR
+  nginx-dp   1/1     1            1           11m   nginx        docker.io/panyangyang/nginx:v1.12.2   app=nginx-dp
+  ```
+
+- 详细查看
+
+  ```shell
+  [root@master ~]# kubectl describe deployment nginx-dp -n kube-public
+  Name:                   nginx-dp
+  Namespace:              kube-public
+  CreationTimestamp:      Sun, 19 Apr 2020 12:53:10 +0800
+  Labels:                 app=nginx-dp
+  Annotations:            deployment.kubernetes.io/revision: 1
+  Selector:               app=nginx-dp
+  Replicas:               1 desired | 1 updated | 1 total | 1 available | 0 unavailable
+  StrategyType:           RollingUpdate
+  MinReadySeconds:        0
+  RollingUpdateStrategy:  25% max unavailable, 25% max surge
+  Pod Template:
+    Labels:  app=nginx-dp
+    Containers:
+     nginx:
+      Image:        docker.io/panyangyang/nginx:v1.12.2
+      Port:         <none>
+      Host Port:    <none>
+      Environment:  <none>
+      Mounts:       <none>
+    Volumes:        <none>
+  Conditions:
+    Type           Status  Reason
+    ----           ------  ------
+    Available      True    MinimumReplicasAvailable
+    Progressing    True    NewReplicaSetAvailable
+  OldReplicaSets:  <none>
+  NewReplicaSet:   nginx-dp-58774b9c55 (1/1 replicas created)
+  Events:
+    Type    Reason             Age   From                   Message
+    ----    ------             ----  ----                   -------
+    Normal  ScalingReplicaSet  12m   deployment-controller  Scaled up replica set nginx-dp-58774b9c55 to 
+  ```
+
+
+
+##### 查看 pod 资源
+
+```shell
+[root@master ~]# kubectl get pods -n kube-public
+NAME                        READY   STATUS    RESTARTS   AGE
+nginx-dp-58774b9c55-cx76j   1/1     Running   0          24m
+```
+
+##### 进入 pod 资源
+
+```shell
+[root@master ~]# kubectl exec -it nginx-dp-58774b9c55-cx76j bash -n kube-public
+root@nginx-dp-58774b9c55-cx76j:/# ls
+bin  boot  dev  etc  home  lib  lib64  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+root@nginx-dp-58774b9c55-cx76j:/# 
+```
+
+当然也可以用 docker exec 进入容器
+
+##### 删除 pod 资源（重启）
+
+```shell
+[root@master ~]# kubectl delete pod nginx-dp-58774b9c55-cx76j -n kube-public
+pod "nginx-dp-58774b9c55-cx76j" deleted
+[root@master ~]# kubectl get pods -n kube-public
+NAME                        READY   STATUS    RESTARTS   AGE
+nginx-dp-58774b9c55-7974f   1/1     Running   0          19s
+```
+
+> 强制删除参数：--force --grace-period=0
+
+##### 删除 deployment
+
+```shell
+[root@master ~]# kubectl delete deployment nginx-dp -n kube-public
+deployment.extensions "nginx-dp" deleted
+[root@master ~]# kubectl get deployment -n kube-public
+No resources found.
+[root@master ~]# kubectl get pods -n kube-public
+No resources found.
+```
+
+
+
+#### 8.1.3 管理 Service 资源
+
+##### 创建service
+
+```shell
+[root@master ~]# kubectl create deployment nginx-dp --image=docker.io/panyangyang/nginx:v1.12.2 -n kube-public
+deployment.apps/nginx-dp created
+[root@master ~]# kubectl get pods
+NAME                     READY   STATUS    RESTARTS   AGE
+nginx-554b9c67f9-pjd5p   1/1     Running   0          24h
+[root@master ~]# kubectl expose deployment nginx-dp --port=80 -n kube-public
+service/nginx-dp exposed
+[root@master ~]# kubectl get all -n kube-public
+NAME                            READY   STATUS    RESTARTS   AGE
+pod/nginx-dp-58774b9c55-lgv6r   1/1     Running   0          108s
+
+
+NAME               TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)   AGE
+service/nginx-dp   ClusterIP   10.1.133.189   <none>        80/TCP    17s
+
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/nginx-dp   1/1     1            1           108s
+
+NAME                                  DESIRED   CURRENT   READY   AGE
+replicaset.apps/nginx-dp-58774b9c55   1         1         1       108s
+```
+
+##### 查看 service
+
+```shell
+[root@master ~]# kubectl describe svc nginx-dp -n kube-public
+Name:              nginx-dp
+Namespace:         kube-public
+Labels:            app=nginx-dp
+Annotations:       <none>
+Selector:          app=nginx-dp
+Type:              ClusterIP
+IP:                10.1.133.189
+Port:              <unset>  80/TCP
+TargetPort:        80/TCP
+Endpoints:         10.244.2.5:80
+Session Affinity:  None
+Events:            <none>
+```
+
+
+
+#### 8.1.4 总结
+
+![](./img/k8s_cs.png)
+
+
+
+### 8.2 声明式资源管理方法
+
+声明式资源管理方法依赖于 - 资源配置清单（yaml/json)
+
+#### 8.2.1 查看资源配置清单的方法
+
+```shell
+[root@master ~]# kubectl get svc nginx-dp -o yaml -n kube-public
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: "2020-04-19T05:31:44Z"
+  labels:
+    app: nginx-dp
+  name: nginx-dp
+  namespace: kube-public
+  resourceVersion: "131556"
+  selfLink: /api/v1/namespaces/kube-public/services/nginx-dp
+  uid: 9ec83521-f04a-4cb5-9a0e-22915f9fe046
+spec:
+  clusterIP: 10.1.133.189
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: nginx-dp
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}
+```
+
+#### 8.2.2 解释资源配置清单
+
+```shell
+[root@master ~]# kubectl explain service.metadata
+```
+
+#### 8.2.3 创建资源配置清单
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: nginx-ds
+  name: nginx-ds
+  namespace: kube-public
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: nginx-ds
+  sessionAffinity: None
+  type: ClusterIP
+```
+
+#### 8.2.4 应用资源配置清单
+
+```shell
+[root@master ~]# kubectl apply -f nginx-ds-svc.yaml 
+service/nginx-ds created
+```
+
+#### 8.2.5 修改资源配置清单并应用
+
+- 离线修改
+
+  > 修改 nginx-ds-svc.yaml 文件，并用 kubectl apply -f nginx-ds-svc.yaml 使之生效。
+
+- 在线修改
+
+  > 直接使用 kubectl edit service nginx-ds 在线编辑资源配置清单并保持生效。
+
+#### 8.2.6 删除资源配置清单
+
+- 陈述式删除
+
+  > kubectl delete service nginx-ds -n tube-public
+
+- 声明式删除
+
+  > kubectl delete -f nginx-df-svc.yaml
+
+#### 8.2.7 查看并使用 service 资源
+
+```shell
+[root@master ~]# kubectl get svc -o wide
+NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE     SELECTOR
+kubernetes   ClusterIP   10.1.0.1       <none>        443/TCP        27h     <none>
+nginx        NodePort    10.1.189.125   <none>        80:31068/TCP   26h     app=nginx
+nginx-ds     ClusterIP   10.1.39.17     <none>        80/TCP         4m32s   app=nginx-ds
+```
+
+#### 8.2.8 总结
+
+![](./img/k8s_cs.png)
 
