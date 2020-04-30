@@ -1,4 +1,4 @@
-# Kubernetes
+# Kubernetes-1
 
 ## 第 1 章 概述
 
@@ -152,7 +152,7 @@ sudo apt-get -y install docker-ce
 #### 验证
 
 ```shell
-docker version
+# docker version
 ```
 
 ```shell
@@ -310,7 +310,7 @@ hostnamectl set-hostname kubernetes-master
 
 # 配置 hosts
 cat >> /etc/hosts << EOF
-10.10.50.xx kubernetes-master
+10.10.50.50 kubernetes-node-02
 EOF
 ```
 
@@ -970,3 +970,1184 @@ Node 的职责是运行容器应用。Node 由 Master 管理，Node 负责监控
   在Kubernetes中，kube proxy负责为Pod创建代理服务；引到访问至服务；并实现服务到Pod的路由和转发，以及通过应用的负载均衡。
 
   
+
+## 第 6 章 Kubernetes 实战
+
+### 6.1 Nginx 部署
+
+#### 概述
+
+我们知道通过 `run` 命令启动容器非常麻烦，Docker 提供了 Compose 为我们解决了这个问题。那 Kubernetes 是如何解决这个问题的呢？其实很简单，使用 `kubectl create` 命令就可以做到和 Compose 一样的效果了，该命令可以通过配置文件快速创建一个集群资源对象。
+
+#### 部署 Deployment
+
+以 部署 nginx 为例
+
+创建一个名为`nginx-deployment.yml` 配置文件
+
+v1.16.0 之后
+
+```yaml
+# API 版本号：由 extensions/v1beta1 修改为 apps/v1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-app
+spec:
+  # 增加了选择器配置
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        # 设置标签由 name 修改为 app
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        ports:
+        - containerPort: 80
+```
+
+部署&删除
+
+```sh
+# kubectl create -f nginx-deployment.yml
+# kubecel delete -f nginx-deployment.yml
+```
+
+#### 镜像拉取策略
+
+支持三中 ImagePullPolicy
+
+- Always：不管镜像是否存在都会进行一次拉取
+- Never：不管镜像是否存在都不会进行拉取
+- IfNotPresent：如果镜像不存在，才会进行拉取
+
+注意：
+
+- 默认为 `IfNotPresent`, 但 `:latest` 标签的镜像默认为：`Always`
+- 拉取镜像时 Docker 会进行校验, 如果镜像中的 MD5 码没有变, 则不会拉取镜像数据
+- 生产环境中应该尽可能避免使用：`latest` 标签, 而开发环境中可以借助 `:latest` 自动拉取最新的镜像。
+
+#### 发布 Service
+
+创建一个名为 `nginx-service.yml` 的配置文件
+
+v1.16.0 之后
+
+```yaml
+# API 版本号
+apiVersion: v1
+# 类型，如：Pod/ReplicationController/Deployment/Service/Ingress
+kind: Service
+# 元数据
+metadata:
+  # Kind 的名称
+  name: nginx-http
+spec:
+	# 暴露端口
+  ports:
+  	## Service 暴露的端口
+    - port: 80
+    	## Pod 上的端口，这里是将 Service 暴露的端口转发到 Pod 端口上
+      targetPort: 80
+  # 类型
+  type: LoadBalancer
+   # 标签选择器
+  selector:
+    # 需要和上面部署的 Deployment 标签名对应
+    app: nginx
+```
+
+部署&删除
+
+```sh
+# 部署
+kubectl create -f nginx-service.yml
+# 删除
+kubectl delete -f nginx-service.yml
+```
+
+#### 验证是否生效
+
+- 查看 POD 列表
+
+  ```sh
+  root@kubernetes-master:~# kubectl get pods
+  NAME                        READY   STATUS              RESTARTS   AGE
+  nginx-app-d46f5678b-xkknk   0/1     ContainerCreating   0          29s
+  nginx-app-d46f5678b-zhs5c   0/1     ContainerCreating   0          29s
+  ```
+
+- 查看 Deployment 列表
+
+  ```sh
+  root@kubernetes-master:~# kubectl get deployment
+  NAME        READY   UP-TO-DATE   AVAILABLE   AGE
+  nginx-app   2/2     2            2           91s
+  ```
+
+- 查看 Service 列表
+
+  ```sh
+  root@kubernetes-master:~# kubectl get services
+  NAME         TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+  kubernetes   ClusterIP      10.96.0.1       <none>        443/TCP        62m
+  nginx-http   LoadBalancer   10.106.102.66   <pending>     80:32511/TCP   8s
+  ```
+
+- 查看 Service 详情
+
+  ```sh
+  root@kubernetes-master:~# kubectl describe service nginx-http
+  Name:                     nginx-http
+  Namespace:                default
+  Labels:                   <none>
+  Annotations:              <none>
+  Selector:                 app=nginx
+  Type:                     LoadBalancer
+  IP:                       10.106.102.66
+  Port:                     <unset>  80/TCP
+  TargetPort:               80/TCP
+  NodePort:                 <unset>  32511/TCP
+  Endpoints:                10.244.140.65:80,10.244.140.66:80
+  Session Affinity:         None
+  External Traffic Policy:  Cluster
+  Events:                   <none>
+  ```
+
+- 通过浏览器访问
+
+  通过浏览器访问 http://masterip:32511/ ，出现 Nginx 欢迎页即表示成功
+
+  
+
+#### 集成环境部署
+
+也可以不区分配置文件，一次性部署 Deployment 和 Service，创建一个名为 `nginx.yml` 的配置文件，配置内容如下：
+
+```sh
+vi nginx.yml
+```
+
+```yaml
+# API 版本号：由 extensions/v1beta1 修改为 apps/v1
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-app
+spec:
+  # 增加了选择器配置
+  selector:
+    matchLabels:
+      app: nginx
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        # 设置标签由 name 修改为 app
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        ports:
+        - containerPort: 80
+---
+# API 版本号
+apiVersion: v1
+# 类型，如：Pod/ReplicationController/Deployment/Service/Ingress
+kind: Service
+# 元数据
+metadata:
+  # Kind 的名称
+  name: nginx-http
+spec:
+  # 暴露端口
+  ports:
+    ## Service 暴露的端口
+    - port: 80
+      ## Pod 上的端口，这里是将 Service 暴露的端口转发到 Pod 端口上
+      targetPort: 80
+  # 类型
+  type: LoadBalancer
+   # 标签选择器
+  selector:
+    # 需要和上面部署的 Deployment 标签名对应
+    app: nginx       
+```
+
+部署&删除
+
+```sh
+# 部署
+kubectl create -f nginx.yml
+# 删除
+kubectl delete -f nginx.yml
+```
+
+
+
+#### 修改默认的端口范围
+
+Kubernetes 服务的 NodePort 默认端口范围是 30000-32767，在某些场合下，这个限制不太适用，我们可以自定义它的端口范围，操作步骤如下：
+
+编辑 `vi /etc/kubernetes/manifests/kube-apiserver.yaml` 配置文件，增加配置 `--service-node-port-range=2-65535`
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    component: kube-apiserver
+    tier: control-plane
+  name: kube-apiserver
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-apiserver
+    # 在这里增加配置即可
+    - --service-node-port-range=2-65535
+    - --advertise-address=192.168.141.150
+    - --allow-privileged=true
+    - --authorization-mode=Node,RBAC
+    - --client-ca-file=/etc/kubernetes/pki/ca.crt
+    - --enable-admission-plugins=NodeRestriction
+    - --enable-bootstrap-token-auth=true
+    - --etcd-cafile=/etc/kubernetes/pki/etcd/ca.crt
+    - --etcd-certfile=/etc/kubernetes/pki/apiserver-etcd-client.crt
+// 以下配置省略...
+```
+
+使用 `docker ps` 命令找到 `kube-apiserver` 容器，再使用 `docker restart ` 即可生效。
+
+
+
+### 6.2 Ingress 统一访问入门
+
+#### 术语
+
+- **节点：** Kubernetes 集群中的服务器
+- **集群：** Kubernetes 管理的一组服务器集合
+- **边界路由器：** 为局域网和 Internet 路由数据包的路由器，执行防火墙保护局域网络
+- **集群网络：** 遵循 Kubernetes 网络模型实现集群内的通信的具体实现，比如 Flannel 和 Calico
+- **服务：** Kubernetes 的服务 (Service) 是使用标签选择器标识的一组 Pod Service (Deployment)。 **除非另有说明，否则服务的虚拟 IP 仅可在集群内部访问**
+
+
+
+#### 内部访问方式 ClusterIP
+
+ClusterIP 服务是 Kubernetes 的默认服务。它给你一个集群内的服务，集群内的其它应用都可以访问该服务。集群外部无法访问它。在某些场景下我们可以使用 Kubernetes 的 Proxy 模式来访问服务，比如调试服务时。
+
+![](./img/clusterIp.png)
+
+#### 三种外部访问方式
+
+##### NodePort
+
+NodePort 服务是引导外部流量到你的服务的最原始方式。NodePort，正如这个名字所示，**在所有节点（虚拟机）上开放一个特定端口**，任何发送到该端口的流量都被转发到对应服务。
+
+NodePort 服务特征如下：
+
+- 每个端口只能是一种服务
+- 端口范围只能是 30000-32767（可调）
+- 不在 YAML 配置文件中指定则会分配一个默认端口
+
+> **建议：** 不要在生产环境中使用这种方式暴露服务，大多数时候我们应该让 Kubernetes 来选择端口
+
+![](./img/nodeport.png)
+
+##### LoadBalancer
+
+LoadBalancer 服务是暴露服务到 Internet 的标准方式。所有通往你指定的端口的流量都会被转发到对应的服务。它没有过滤条件，没有路由等。这意味着你几乎可以发送任何种类的流量到该服务，像 HTTP，TCP，UDP，WebSocket，gRPC 或其它任意种类。
+
+![](./img/loadbalancer.png)
+
+##### Ingress
+
+Ingress 事实上不是一种服务类型。相反，它处于多个服务的前端，扮演着 “智能路由” 或者集群入口的角色。你可以用 Ingress 来做许多不同的事情，各种不同类型的 Ingress 控制器也有不同的能力。它允许你基于路径或者子域名来路由流量到后端服务。
+
+Ingress 可能是暴露服务的最强大方式，但同时也是最复杂的。Ingress 控制器有各种类型，包括 Google Cloud Load Balancer， Nginx，Contour，Istio，等等。它还有各种插件，比如 cert-manager (它可以为你的服务自动提供 SSL 证书)/
+
+如果你想要使用同一个 IP 暴露多个服务，这些服务都是使用相同的七层协议（典型如 HTTP），你还可以获取各种开箱即用的特性（比如 SSL、认证、路由等等）
+
+![](./img/ingress.png)
+
+
+
+#### 什么是 Ingress
+
+通常情况下，Service 和 Pod 的 IP 仅可在集群内部访问。集群外部的请求需要通过负载均衡转发到 Service 在 Node 上暴露的 NodePort 上，然后再由 kube-proxy 通过边缘路由器 (edge router) 将其转发给相关的 Pod 或者丢弃。而 Ingress 就是为进入集群的请求提供路由规则的集合
+
+Ingress 可以给 Service 提供集群外部访问的 URL、负载均衡、SSL 终止、HTTP 路由等。为了配置这些 Ingress 规则，集群管理员需要部署一个 Ingress Controller，它监听 Ingress 和 Service 的变化，并根据规则配置负载均衡并提供访问入口。
+
+#### 使用 Nginx Ingress Controller
+
+本次实践的主要目的就是将入口统一，不再通过 LoadBalancer 等方式将端口暴露出来，而是使用 Ingress 提供的反向代理负载均衡功能作为我们的唯一入口。通过以下步骤操作仔细体会。
+
+> **注意：** 下面包含资源配置的步骤都是自行创建 YAML 配置文件通过 `kubectl create -f ` 和 `kubectl delete -f ` 部署和删除
+
+
+
+##### 部署 Tomcat
+
+部署 Tomcat 但仅允许在内网访问，我们要通过 Ingress 提供的反向代理功能路由到 Tomcat 之上
+
+```yaml
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: tomcat-app
+spec:
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        name: tomcat
+    spec:
+      containers:
+      - name: tomcat
+        image: tomcat
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tomcat-http
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  # ClusterIP, NodePort, LoadBalancer
+  type: LoadBalancer
+  selector:
+    name: tomcat
+```
+
+##### 安装 Nginx Ingress Controller
+
+Ingress Controller 有许多种，我们选择最熟悉的 Nginx 来处理请求，其它可以参考 [官方文档](https://kubernetes.io/docs/concepts/services-networking/ingress-controllers/)
+
+- 下载 Nginx Ingress Controller 配置文件
+
+  ```sh
+  # wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/static/mandatory.yaml
+  ```
+  
+- 修改配置文件，找到配置如下位置 (搜索 `serviceAccountName`) 在下面增加一句 `hostNetwork: true`
+
+  ```yaml
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: nginx-ingress-controller
+    namespace: ingress-nginx
+    labels:
+      app.kubernetes.io/name: ingress-nginx
+      app.kubernetes.io/part-of: ingress-nginx
+  spec:
+    # 可以部署多个实例
+    replicas: 1
+    selector:
+      matchLabels:
+        app.kubernetes.io/name: ingress-nginx
+        app.kubernetes.io/part-of: ingress-nginx
+    template:
+      metadata:
+        labels:
+          app.kubernetes.io/name: ingress-nginx
+          app.kubernetes.io/part-of: ingress-nginx
+        annotations:
+          prometheus.io/port: "10254"
+          prometheus.io/scrape: "true"
+      spec:
+        serviceAccountName: nginx-ingress-serviceaccount
+        # 增加 hostNetwork: true，意思是开启主机网络模式，暴露 Nginx 服务端口 80
+        hostNetwork: true
+        containers:
+          - name: nginx-ingress-controller
+            image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.24.1
+            args:
+              - /nginx-ingress-controller
+              - --configmap=$(POD_NAMESPACE)/nginx-configuration
+              - --tcp-services-configmap=$(POD_NAMESPACE)/tcp-services
+              - --udp-services-configmap=$(POD_NAMESPACE)/udp-services
+              - --publish-service=$(POD_NAMESPACE)/ingress-nginx
+  // 以下代码省略...
+  ```
+
+  
+
+- 部署 Ingress
+
+  Ingress 翻译过来是入口的意思，说白了就是个 API 网关（想想之前学的 Zuul 和 Spring Cloud Gateway）
+
+  ```yaml
+  apiVersion: networking.k8s.io/v1beta1
+  kind: Ingress
+  metadata:
+    name: nginx-web
+    annotations:
+      # 指定 Ingress Controller 的类型
+      kubernetes.io/ingress.class: "nginx"
+      # 指定我们的 rules 的 path 可以使用正则表达式
+      nginx.ingress.kubernetes.io/use-regex: "true"
+      # 连接超时时间，默认为 5s
+      nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
+      # 后端服务器回转数据超时时间，默认为 60s
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+      # 后端服务器响应超时时间，默认为 60s
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+      # 客户端上传文件，最大大小，默认为 20m
+      nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+      # URL 重写
+      nginx.ingress.kubernetes.io/rewrite-target: /
+  spec:
+    # 路由规则
+    rules:
+    # 主机名，只能是域名，修改为你自己的
+    - host: k8s.test.com
+      http:
+        paths:
+        - path:
+          backend:
+            # 后台部署的 Service Name，与上面部署的 Tomcat 对应
+            serviceName: tomcat-http
+            # 后台部署的 Service Port，与上面部署的 Tomcat 对应
+            servicePort: 8080
+  ```
+
+#### 验证是否成功
+
+##### 查看 Tomcat
+
+```bash
+kubectl get deployment
+
+# 输出如下
+NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+tomcat-app   2/2     2            2           88m
+```
+
+```bash
+kubectl get service
+
+# 输出如下
+NAME          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+kubernetes    ClusterIP   10.96.0.1       <none>        443/TCP    2d5h
+tomcat-http   ClusterIP   10.97.222.179   <none>        8080/TCP   89m
+```
+
+##### 查看 Nginx Ingress Controller
+
+```bash
+kubectl get pods -n ingress-nginx -o wide
+
+# 输出如下，注意下面的 IP 地址，就是我们实际访问地址
+NAME                                        READY   STATUS    RESTARTS   AGE   IP                NODE                 NOMINATED NODE   READINESS GATES
+nginx-ingress-controller-76f9fddcf8-vzkm5   1/1     Running   0          61m   192.168.141.160   kubernetes-node-01   <none>           <none>
+```
+
+##### 查看 Ingress
+
+```bash
+kubectl get ingress
+
+# 输出如下
+NAME        HOSTS          ADDRESS   PORTS   AGE
+nginx-web   k8s.test.com             80      61m
+```
+
+#### 测试访问
+
+成功代理到 Tomcat 即表示成功
+
+```bash
+# 不设置 Hosts 的方式请求地址，下面的 IP 和 Host 均在上面有配置
+curl -v http://192.168.141.160 -H 'host: k8s.test.com'
+```
+
+#### 扩展阅读
+
+##### 解决无法下载 quay.io 地址镜像的问题
+
+在实际操作中我们需要拉取 Nginx Ingress 镜像，默认地址为：`quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.24.1`，由于国内网络等原因，可能无法正常拉取该镜像，此时我们可以使用 Azure 提供的镜像加速器，将 `quay.io` 替换为 `quay.azk8s.cn`，其它类似地址的镜像无法下载均可尝试使用该方式解决，替换后的地址如：`quay.azk8s.cn/kubernetes-ingress-controller/nginx-ingress-controller:0.24.1`
+
+
+
+### 6.3 Kubernetes 准备数据卷（持久化）
+
+#### 概述
+
+在 Docker 中就有数据卷的概念，当容器删除时，数据也一起会被删除，想要持久化使用数据，需要把主机上的目录挂载到 Docker 中去，在 K8S 中，数据卷是通过 Pod 实现持久化的，如果 Pod 删除，数据卷也会一起删除，k8s 的数据卷是 docker 数据卷的扩展，K8S 适配各种存储系统，包括本地存储 EmptyDir，HostPath， 网络存储（NFS，GlusterFS，PV/PVC）等。
+
+我们以部署 MySQL8 为例，采用 **NFS + PV/PVC** 网络存储方案实现我们的 Kubernetes 数据持久化。
+
+#### 什么是 NFS
+
+NFS 是 Network File System 的简写，即网络文件系统，NFS 是 FreeBSD 支持的文件系统中的一种。NFS 基于 RPC (Remote Procedure Call) 远程过程调用实现，其允许一个系统在网络上与它人共享目录和文件。通过使用 NFS，用户和程序就可以像访问本地文件一样访问远端系统上的文件。NFS 是一个非常稳定的，可移植的网络文件系统。具备可扩展和高性能等特性，达到了企业级应用质量标准。由于网络速度的增加和延迟的降低，NFS 系统一直是通过网络提供文件系统服务的有竞争力的选择 。
+
+##### NFS 原理
+
+NFS 使用 RPC (Remote Procedure Call) 的机制进行实现，RPC 使得客户端可以调用服务端的函数。同时，由于有 VFS 的存在，客户端可以像使用其它普通文件系统一样使用 NFS 文件系统。经由操作系统的内核，将 NFS 文件系统的调用请求通过 TCP/IP 发送至服务端的 NFS 服务。NFS 服务器执行相关的操作，并将操作结果返回给客户端。
+
+![](./img/nfs.jpg)
+
+##### NFS 服务主要进程
+
+- rpc.nfsd：最主要的 NFS 进程，管理客户端是否可登录
+- rpc.mountd：挂载和卸载 NFS 文件系统，包括权限管理
+- rpc.lockd：非必要，管理文件锁，避免同时写出错
+- rpc.statd：非必要，检查文件一致性，可修复文件
+
+##### NFS 的关键工具
+
+- 主要配置文件：`/etc/exports`
+- NFS 文件系统维护命令：`/usr/bin/exportfs`
+- 共享资源的日志文件：`/var/lib/nfs/*tab`
+- 客户端查询共享资源命令：`/usr/sbin/showmount`
+- 端口配置：`/etc/sysc`
+
+##### NFS 服务端配置
+
+在 NFS 服务器端的主要配置文件为 `/etc/exports` 时，通过此配置文件可以设置共享文件目录。每条配置记录由 NFS 共享目录、NFS 客户端地址和参数这 3 部分组成，格式如下：
+
+```text
+[NFS 共享目录] [NFS 客户端地址 1 (参数 1, 参数 2, 参数 3……)] [客户端地址 2 (参数 1, 参数 2, 参数 3……)]
+```
+
+- NFS 共享目录：服务器上共享出去的文件目录
+- NFS 客户端地址：允许其访问的 NFS 服务器的客户端地址，可以是客户端 IP 地址，也可以是一个网段 (192.168.141.0/24)
+- 访问参数：括号中逗号分隔项，主要是一些权限选项
+
+##### 访问权限参数
+
+| 序号 | 选项 | 描述                                   |
+| ---- | ---- | -------------------------------------- |
+| 1    | ro   | 客户端对于共享文件目录为只读权限。默认 |
+| 2    | rw   | 客户端对于共享文件目录具有读写权限     |
+
+##### 用户映射参数
+
+| 序号 | 选项           | 描述                                                         |
+| ---- | -------------- | ------------------------------------------------------------ |
+| 1    | root_squash    | 使客户端使用 root 账户访冋时，服务器映射为服务器本地的匿名账号 |
+| 2    | no_root_squash | 客户端连接服务端时如果使用的是 root，那么也拥有对服务端分享的目录的 root 权限 |
+| 3    | all_squash     | 将所有客户端用户请求映射到匿名用户或用户组（nfsnobody)       |
+| 4    | no_all_squash  | 与上相反。默认                                               |
+| 5    | anonuid=xxx    | 将远程访问的所有用户都映射为匿名用户，并指定该用户为本地用户(UID=xxx) |
+| 6    | anongid=xxx    | 将远程访问的所有用户组都映射为匿名用户组账户，并指定该匿名用户组账户为本地用户组账户(GUI=xxx) |
+
+##### 其它配置参数
+
+| 序号 | 选项       | 描述                                                         |
+| ---- | ---------- | ------------------------------------------------------------ |
+| 1    | sync       | 同步写操作，数据写入存储设备后返回成功信息。默认             |
+| 2    | async      | 异步写提作，数据在未完全写入存储设备前就返回成功信息，实际还在内存， |
+| 3    | wdelay     | 延迟写入选项，将多个写提请求合并后写入硬盘，减少 I/O 次数， NFS 非正常关闭数据可能丢失。默认 |
+| 4    | no_wdelay  | 与上相反，不与 async 同时生效，如果 NFS 服务器主要收到小且不相关的请求，该选项实际会降低性能 |
+| 5    | subtree    | 若输出目录是一个子目录，则 NFS 服务器将检查其父目录的权限。默认 |
+| 6    | no_subtree | 即使输出目录是一个子目录， NFS 服务器也不检查其父目录的权限，这样可以提高效率 |
+| 7    | secure     | 限制客户端只能从小于 1024 的 TCP/IP 端口连接 NFS 服务器。默认 |
+| 8    | insecure   | 允许客户端从大于 1024 的 TCP/IP 端口连接服务器               |
+
+
+
+#### 安装 NFS 服务器
+
+由于 NFS 是一套分布式文件系统，我们再创建一台独立的虚拟机作为我们 NFS 服务端，配置如下
+
+| 主机名             | IP              | 系统                | CPU/内存 | 磁盘 |
+| ------------------ | --------------- | ------------------- | -------- | ---- |
+| kubernetes-volumes | 192.168.141.140 | Ubuntu Server 18.04 | 2核2G    | 20G  |
+
+- 创建一个目录作为共享文件目录
+
+```bash
+mkdir -p /usr/local/kubernetes/volumes
+```
+
+- 给目录增加读写权限
+
+```bash
+chmod a+rw /usr/local/kubernetes/volumes
+```
+
+- 安装 NFS 服务端
+
+```bash
+apt-get update
+apt-get install -y nfs-kernel-server
+```
+
+- 配置 NFS 服务目录，打开文件 `vi /etc/exports`，在尾部新增一行，内容如下
+  - `/usr/local/kubernetes/volumes`：作为服务目录向客户端开放
+  - *：表示任何 IP 都可以访问
+  - rw：读写权限
+  - sync：同步权限
+  - no_subtree_check：表示如果输出目录是一个子目录，NFS 服务器不检查其父目录的权限
+
+```text
+/usr/local/kubernetes/volumes *(rw,sync,no_subtree_check)
+```
+
+- 重启服务，使配置生效
+
+```bash
+/etc/init.d/nfs-kernel-server restart
+```
+
+
+
+#### 安装 NFS 客户端
+
+安装客户端的目的是验证是否可以上传文件到服务端，安装命令如下
+
+```bash
+apt-get install -y nfs-common
+```
+
+- 创建 NFS 客户端挂载目录
+
+```bash
+mkdir -p /usr/local/kubernetes/volumes-mount
+```
+
+- 将 NFS 服务器的 `/usr/local/kubernetes/volumes` 目录挂载到 NFS 客户端的 `/usr/local/kubernetes/volumes-mount` 目录
+
+```bash
+mount 192.168.141.140:/usr/local/kubernetes/volumes /usr/local/kubernetes/volumes-mount
+```
+
+- 使用 `df` 命令查看挂载信息
+
+```bash
+df
+
+# 输出如下
+Filesystem                                    1K-blocks    Used Available Use% Mounted on
+udev                                             977556       0    977556   0% /dev
+tmpfs                                            201732    1252    200480   1% /run
+/dev/mapper/ubuntu--vg-ubuntu--lv              19475088 5490916  12971848  30% /
+tmpfs                                           1008648       0   1008648   0% /dev/shm
+tmpfs                                              5120       0      5120   0% /run/lock
+tmpfs                                           1008648       0   1008648   0% /sys/fs/cgroup
+/dev/loop0                                        90624   90624         0 100% /snap/core/6964
+/dev/loop1                                        93184   93184         0 100% /snap/core/6350
+/dev/sda2                                        999320  214252    716256  24% /boot
+tmpfs                                            201728       0    201728   0% /run/user/0
+# 有此输出表示挂载成功
+193.192.168.141.140:/usr/local/kubernetes/volumes  19475200 5490944  12972032  30% /usr/local/kubernetes/volumes-mount
+```
+
+#### 验证 NFS 服务
+
+- 测试文件上传
+
+```bash
+ip addr > /usr/local/kubernetes/volumes-mount/test.txt
+```
+
+- 查看 `/usr/local/kubernetes/volumes` 目录下是否有 `test.txt` 文件，有则表示成功
+
+#### 取消 NFS 客户端挂载
+
+> **注意：** 不要直接在挂载目录下执行，否则会报错
+
+```bash
+umount /usr/local/kubernetes/volumes-mount
+```
+
+
+
+### 6.4 Kubernetes 实现数据持久化
+
+#### 概述
+
+存储管理与计算管理是两个不同的问题。Persistent Volume 子系统，对存储的供应和使用做了抽象，以 API 形式提供给管理员和用户使用。要完成这一任务，我们引入了两个新的 API 资源：**Persistent Volume（持久卷）** 和 **Persistent Volume Claim（持久卷消费者）**。
+
+Persistent Volume（PV）是集群之中的一块网络存储。跟 Node 一样，也是集群的资源。PV 跟 Volume (卷) 类似，不过会有独立于 Pod 的生命周期。这一 API 对象包含了存储的实现细节，例如 NFS、iSCSI 或者其他的云提供商的存储系统。Persistent Volume Claim (PVC) 是用户的一个请求。跟 Pod 类似，Pod 消费 Node 的资源，PVC 消费 PV 的资源。Pod 能够申请特定的资源（CPU 和内存）；Claim 能够请求特定的尺寸和访问模式（例如可以加载一个读写，以及多个只读实例）
+
+#### PV 与 PVC
+
+PV 是集群的资源。PVC 是对这一资源的请求，也是对资源的所有权的检验。PV 和 PVC 之间的互动遵循如下的生命周期。
+
+- **供应：** 集群管理员会创建一系列的 PV。这些 PV 包含了为集群用户提供的真实存储资源，它们可利用 Kubernetes API 来消费。
+- **绑定：** 用户创建一个包含了容量和访问模式的持久卷申请。Master 会监听 PVC 的产生，并尝试根据请求内容查找匹配的 PV，并把 PV 和 PVC 进行绑定。用户能够获取满足需要的资源，并且在使用过程中可能超出请求数量。如果找不到合适的卷，这一申请就会持续处于非绑定状态，一直到出现合适的 PV。例如一个集群准备了很多的 50G 大小的持久卷，（虽然总量足够）也是无法响应 100G 的申请的，除非把 100G 的 PV 加入集群。
+- **使用：** Pod 把申请作为卷来使用。集群会通过 PVC 查找绑定的 PV，并 Mount 给 Pod。对于支持多种访问方式的卷，用户在使用 PVC 作为卷的时候，可以指定需要的访问方式。一旦用户拥有了一个已经绑定的 PVC，被绑定的 PV 就归该用户所有了。用户的 Pods 能够通过在 Pod 的卷中包含的 PVC 来访问他们占有的 PV。
+- **释放：** 当用户完成对卷的使用时，就可以利用 API 删除 PVC 对象了，而且他还可以重新申请。删除 PVC 后，对应的卷被视为 “被释放”，但是这时还不能给其他的 PVC 使用。之前的 PVC 数据还保存在卷中，要根据策略来进行后续处理。
+- **回收：** PV 的回收策略向集群阐述了在 PVC 释放卷的时候，应如何进行后续工作。目前可以采用三种策略：保留，回收或者删除。保留策略允许重新申请这一资源。在持久卷能够支持的情况下，删除策略会同时删除持久卷以及 AWS EBS/GCE PD 或者 Cinder 卷中的存储内容。如果插件能够支持，回收策略会执行基础的擦除操作（`rm -rf /thevolume/*`），这一卷就能被重新申请了。
+
+#### 定义 PV
+
+##### 持久卷插件
+
+持久卷是以插件方式实现的，目前支持的插件如下：
+
+- GCEPersistentDisk
+- AWSElasticBlockStore
+- **NFS（我们采用的是该方案）**
+- iSCSI
+- RBD (Ceph Block Device)
+- Glusterfs
+- HostPath (单节点测试使用)
+- 本地持久卷
+
+##### YAML 配置
+
+创建一个名为 `nfs-pv-mysql.yml` 的配置文件
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-pv-mysql
+spec:
+  # 设置容量
+  capacity:
+    storage: 5Gi
+  # 访问模式
+  accessModes:
+    # 该卷能够以读写模式被多个节点同时加载
+    - ReadWriteMany
+  # 回收策略，这里是基础擦除 `rm-rf/thevolume/*`
+  persistentVolumeReclaimPolicy: Recycle
+  nfs:
+    # NFS 服务端配置的路径
+    path: "/usr/local/kubernetes/volumes"
+    # NFS 服务端地址
+    server: 192.168.141.140
+    readOnly: false
+```
+
+```bash
+# 部署
+kubectl create -f nfs-pv-mysql.yml
+# 删除
+kubectl delete -f nfs-pv-mysql.yml
+# 查看
+kubectl get pv
+NAME           CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+nfs-pv-mysql   5Gi        RWX            Recycle          Available                                   29m
+```
+
+##### 配置说明
+
+- **Capacity（容量）**
+
+  一般来说，PV 会指定存储容量。这里需要使用 PV 的 capcity 属性。目前存储大小是唯一一个能够被申请的指标，今后会加入更多属性，例如 IOPS，吞吐能力等。
+
+- **AccessModes（访问模式）**
+
+  只要资源提供者支持，持久卷能够被用任何方式加载到主机上。每种存储都会有不同的能力，每个 PV 的访问模式也会被设置成为该卷所支持的特定模式。例如 NFS 能够支持多个读写客户端，但是某个 NFS PV 可能会在服务器上以只读方式使用。每个 PV 都有自己的一系列的访问模式，这些访问模式取决于 PV 的能力。访问模式的可选范围如下：
+  - ReadWriteOnce：该卷能够以读写模式被加载到一个节点上
+  - ReadOnlyMany：该卷能够以只读模式加载到多个节点上
+  - ReadWriteMany：该卷能够以读写模式被多个节点同时加载
+
+  在 CLI 下，访问模式缩写为：
+
+  - RWO：ReadWriteOnce
+  - ROX：ReadOnlyMany
+  - RWX：ReadWriteMany
+
+  另外，一个卷不论支持多少种访问模式，同时只能以一种访问模式加载。例如一个 GCE Persistent Disk 既能支持 ReadWriteOnce，也能支持 ReadOnlyMany。
+
+- **RecyclingPolicy（回收策略）**
+
+  当前的回收策略可选值包括：
+
+  - Retain：人工重新申请
+  - Recycle：基础擦除（`rm-rf/thevolume/*`）
+  - Delete：相关的存储资产例如 AWS EBS，GCE PD 或者 OpenStack Cinder 卷一并删除
+
+  目前，只有 NFS 和 HostPath 支持 Recycle 策略，AWS EBS、GCE PD 以及 Cinder 卷支持 Delete 策略。
+
+- **阶段（Phase）**
+
+  一个卷会处于如下阶段之一：
+
+  - Available：可用资源，尚未被绑定到 PVC 上
+  - Bound：该卷已经被绑定
+  - Released：PVC 已经被删除，但该资源尚未被集群回收
+  - Failed：该卷的自动回收过程失败
+
+#### 定义 PVC
+
+创建一个名为 `nfs-pvc-mysql-myshop.yml` 的配置文件
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-pvc-mysql-myshop
+spec:
+  accessModes:
+  # 需要使用和 PV 一致的访问模式
+  - ReadWriteMany
+  # 按需分配资源
+  resources:
+     requests:
+       storage: 1Gi
+```
+
+```bash
+# 部署
+kubectl create -f nfs-pvc-mysql-myshop.yml
+# 删除
+kubectl delete -f nfs-pvc-mysql-myshop.yml
+# 查看
+kubectl get pvc
+```
+
+
+
+#### 部署 MySQL8
+
+> **注意：** 要确保每台 Node 都安装了 NFS 客户端，`apt-get install -y nfs-common`
+
+```yaml
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: mysql-myshop
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: mysql-myshop
+    spec:
+      containers:
+        - name: mysql-myshop
+          image: mysql
+          # 只有镜像不存在时，才会进行镜像拉取
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3306
+          # 同 Docker 配置中的 environment
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: "123456"
+          # 容器中的挂载目录
+          volumeMounts:
+            - name: nfs-vol-myshop
+              mountPath: /var/lib/mysql
+      volumes:
+        # 挂载到数据卷
+        - name: nfs-vol-myshop
+          persistentVolumeClaim:
+            claimName: nfs-pvc-mysql-myshop
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-myshop
+spec:
+  ports:
+    - port: 3306
+      targetPort: 3306
+  type: LoadBalancer
+  selector:
+    name: mysql-myshop
+```
+
+##### 解决权限问题
+
+当你使用 `kubectl create -f ` 部署后，你会发现 Pod 状态为 Error，容器无法正常启动的情况，我们可以使用 `kubectl logs ` 看到一条日志
+
+```text
+chown: changing ownership of '/var/lib/mysql/': Operation not permitted
+```
+
+解决方案是在 NFS 服务端配置中增加一个参数 `no_root_squash`，即将配置修改为：`/usr/local/kubernetes/volumes *(rw,sync,no_subtree_check,no_root_squash)`
+
+##### 测试运行
+
+部署成功后可以使用 `kubectl get service` 查看我们 MySQL 的运行端口，再使用连接工具连接会报如下错误
+
+![](./img/mysql_error.png)
+
+意思为无法使用密码的方式登录，在 Docker 部署时我们可以在 YAML 中配置相关参数解决这个问题；下一节我们讲解在 Kubernetes 中采用 **ConfigMap** 的方式配置 MySQL
+
+
+
+### 6.5 Kubernetes ConfigMap
+
+#### 概述
+
+ConfigMap 是用来存储配置文件的 Kubernetes 资源对象，所有的配置内容都存储在 etcd 中。它可以被用来保存单个属性，也可以用来保存整个配置文件或者 JSON 二进制对象。ConfigMap API 资源提供了将配置数据注入容器的方式，同时保证该机制对容器来说是透明的。配置应该从 Image 内容中解耦，以此来保持容器化应用程序的可移植性。
+
+#### 使用 ConfigMap 配置 MySQL
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-myshop-config
+data:
+  # 这里是键值对数据
+  mysqld.cnf: |
+    [client]
+    port=3306
+    [mysql]
+    no-auto-rehash
+    [mysqld]
+    skip-host-cache
+    skip-name-resolve
+    default-authentication-plugin=mysql_native_password
+    character-set-server=utf8mb4
+    collation-server=utf8mb4_general_ci
+    explicit_defaults_for_timestamp=true
+    lower_case_table_names=1
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: mysql-myshop
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: mysql-myshop
+    spec:
+      containers:
+        - name: mysql-myshop
+          image: mysql
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: "123456"
+          volumeMounts:
+            # 以数据卷的形式挂载 MySQL 配置文件目录
+            - name: cm-vol-myshop
+              mountPath: /etc/mysql/conf.d
+            - name: nfs-vol-myshop
+              mountPath: /var/lib/mysql
+      volumes:
+        # 将 ConfigMap 中的内容以文件形式挂载进数据卷
+        - name: cm-vol-myshop
+          configMap:
+            name: mysql-myshop-config
+            items:
+                # ConfigMap 中的 Key
+              - key: mysqld.cnf
+                # ConfigMap Key 匹配的 Value 写入名为 mysqld.cnf 的文件中
+                path: mysqld.cnf
+        - name: nfs-vol-myshop
+          persistentVolumeClaim:
+            claimName: nfs-pvc-mysql-myshop
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-myshop
+spec:
+  ports:
+    - port: 3306
+      targetPort: 3306
+      nodePort: 32036
+  type: LoadBalancer
+  selector:
+    name: mysql-myshop
+```
+
+```bash
+# 查看 ConfigMap
+kubectl get cm
+kubectl describe cm <ConfigMap Name>
+```
+
+
+
+#### 6.6  Kubernetes Dashboard
+
+#### 概述
+
+Kubernetes Dashboard 是 Kubernetes 集群的 Web UI，用于管理集群。
+
+#### 安装
+
+GitHub 地址：[Kubernetes Dashboard](https://github.com/kubernetes/dashboard)
+
+下载配置文件
+
+```bash
+wget https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
+```
+
+修改配置如下
+
+```yaml
+# 省略部分代码...
+
+# ------------------- Dashboard Deployment ------------------- #
+
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard
+  namespace: kube-system
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      k8s-app: kubernetes-dashboard
+  template:
+    metadata:
+      labels:
+        k8s-app: kubernetes-dashboard
+    spec:
+      containers:
+      - name: kubernetes-dashboard
+        # 修改镜像地址为阿里云
+        image: registry.aliyuncs.com/google_containers/kubernetes-dashboard-amd64:v1.10.1
+        ports:
+        - containerPort: 8443
+          protocol: TCP
+        args:
+          - --auto-generate-certificates
+        volumeMounts:
+        - name: kubernetes-dashboard-certs
+          mountPath: /certs
+        - mountPath: /tmp
+          name: tmp-volume
+        livenessProbe:
+          httpGet:
+            scheme: HTTPS
+            path: /
+            port: 8443
+          initialDelaySeconds: 30
+          timeoutSeconds: 30
+      volumes:
+      - name: kubernetes-dashboard-certs
+        secret:
+          secretName: kubernetes-dashboard-certs
+      - name: tmp-volume
+        emptyDir: {}
+      serviceAccountName: kubernetes-dashboard
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+
+---
+# ------------------- Dashboard Service ------------------- #
+
+kind: Service
+apiVersion: v1
+metadata:
+  labels:
+    k8s-app: kubernetes-dashboard
+  name: kubernetes-dashboard
+  namespace: kube-system
+spec:
+  # 修改类型为 NodePort 访问
+  type: NodePort
+  ports:
+    - port: 443
+      targetPort: 8443
+      # 设置端口号为 30001
+      nodePort: 30001
+  selector:
+    k8s-app: kubernetes-dashboard
+```
+
+部署到集群
+
+```yaml
+# 部署
+kubectl create -f kubernetes-dashboard.yaml
+
+# 查看
+kubectl -n kube-system get pods
+kubectl -n kube-system get service kubernetes-dashboard
+kubectl -n kube-system describe service kubernetes-dashboard
+```
+
+#### 访问
+
+需要使用 NodeIP:30001 访问 Dashboard，因为证书原因除火狐浏览器外其它浏览器无法直接打开页面
+
+Chrome 浏览器显示如下
+
+![](./img/k8s_dashboard1.png)
+
+Firefox 浏览器显示如下
+
+![](./img/k8s_dashboard2.png)
+
+
+
+点击 **接受风险并继续** 即可显示欢迎界面
+
+![](./img/k8s_ds.png)
+
+
+
+#### 登录
+
+我们采用 Token 方式登录
+
+- 创建登录账号，创建一个名为 `dashboard-adminuser.yaml` 的配置文件
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kube-system
+```
+
+```sh
+kubectl create -f dashboard-adminuser.yaml
+```
+
+- 打印 Token 信息
+
+```bash
+kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk '{print $1}')
+
+# 输出如下
+Name:         admin-user-token-86cz9
+Namespace:    kube-system
+Labels:       <none>
+Annotations:  kubernetes.io/service-account.name: admin-user
+              kubernetes.io/service-account.uid: 3902d3d4-8b13-11e9-8089-000c29d49c77
+
+Type:  kubernetes.io/service-account-token
+
+Data
+====
+ca.crt:     1025 bytes
+namespace:  11 bytes
+token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IiJ9.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJhZG1pbi11c2VyLXRva2VuLTg2Y3o5Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6ImFkbWluLXVzZXIiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlcnZpY2UtYWNjb3VudC51aWQiOiIzOTAyZDNkNC04YjEzLTExZTktODA4OS0wMDBjMjlkNDljNzciLCJzdWIiOiJzeXN0ZW06c2VydmljZWFjY291bnQ6a3ViZS1zeXN0ZW06YWRtaW4tdXNlciJ9.pA44wyarsahOwqH7X7RVlcdB1k3_j-L3gwOYlTQ4_Lu5ZmfXDFlhqN-Q1tdryJes_V1Nj_utocnXBAxsGzOGaVR4Te4oli3htSepI9MrggQAyeC3C0_QANXGCE6V5L6B5tGZ6tDsY92VDnlvz2N6OrHaH2IJJd2DlxzYvAPvfAFuPeHWuPeVxUisMfXeW42S7US6skZwbZ06JrPYAFxHjqv3zoxRxI8-bmekltvOamsrL0pAXvIUzaowgbjiQb2NgeLAw9O6qfYcz5DAi2C-7G_yAcve6pgnWcIGhVpKoim9DfJUhe1SVx4H4X5Na6GVaaD6FdUIb7UOgsO1FVpTPw
+```
+
+- 将 Token 输入浏览器，成功登陆后效果如下
+
+  ![](./img/k8s_ds_home.png)

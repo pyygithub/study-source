@@ -1,4 +1,4 @@
-# Kubernetes 环境搭建
+# Kubernetes-2
 
 ## 第 6 章 环境搭建（二进制）
 
