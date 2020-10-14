@@ -11,8 +11,15 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "dependencies": {},
+  "dependencies": {
+    "vuepress-plugin-reading-progress": "^1.0.10"
+  },
   "devDependencies": {
-    "vuepress-plugin-autobar": "github:boboidream/vuepress-bar"
+    "vuepress": "^1.7.0",
+    "vuepress-plugin-autobar": "github:boboidream/vuepress-bar",
+    "@vuepress/plugin-back-to-top": "^1.2.0",
+    "vuepress-bar": "^0.2.2",
+    "vuepress-plugin-permalink-pinyin": "^1.0.0",
+    "vuepress-plugin-rpurl": "github:boboidream/vuepress-plugin-rpurl"
   }
 }

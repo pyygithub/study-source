@@ -1,7 +1,5 @@
 # HBase
 
-官网：http://hbase.apache.org
-
 ![](./img/hbase.png)
 
 HDFS：Hadoop分布式文件系统，适合非结构化数据的存储以及读取。
@@ -244,10 +242,6 @@ scan可以查到数据。而上图hdfs中却没有数据文件。
 
 
 
-
-
-
-
 ## 5. 安装 HBase
 
 ### 安装HBase
@@ -345,7 +339,6 @@ get '表名','行健', '列族:key'
 　　　**timestamp：是key的版本号**　
 
 ```shell
-
 hbase(main):001:0> get 't_user_info', '001'
 COLUMN                       CELL
  base_info:age               timestamp=1585464683099, value=18
@@ -743,3 +736,4 @@ Hbase的这个特性跟查询效率有极大的关系
 **思路**：如果能将相同省的用户在hbase的存储文件中连续存储，并且能将相同省中相同姓的用户连续存储，那么，上述两个查询需求的效率就会提高！！！
 
 **做法**：将查询条件拼到rowkey内
+
