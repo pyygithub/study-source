@@ -1,14 +1,12 @@
 {
   "name": "study",
   "version": "1.0.0",
-  "description": "study nodes",
+  "description": "",
   "main": "index.js",
   "scripts": {
     "dev": "vuepress dev docs",
-    "build": "vuepress build docs",
-    "deploy": "bash deploy.sh"
+    "build": "vuepress build docs"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -16,7 +14,7 @@
   },
   "devDependencies": {
     "vuepress": "^1.7.0",
-    "vuepress-plugin-autobar": "github:boboidream/vuepress-bar",
+	"vuepress-plugin-autobar": "github:boboidream/vuepress-bar",
     "@vuepress/plugin-back-to-top": "^1.2.0",
     "vuepress-bar": "^0.2.2",
     "vuepress-plugin-permalink-pinyin": "^1.0.0",
