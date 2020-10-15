@@ -19,6 +19,7 @@ module.exports = {
         logo: '/img/logo.png',
 		// 导航栏配置
         nav: [
+			{text: '分布式', link: '/分布式/'},
 			{text: 'DevOps', link: '/DevOps/'},
 			{text: '大数据', link: '/大数据/'},
             {text: '博客', link: 'https://www.jianshu.com/u/af08f637aff8'}
