@@ -1598,15 +1598,25 @@ Nginx跟Apache一样，都支持自定义输出日志格式，在进行Nginx日�
 在掌握了Nginx日志变量的含义后，接着开始对它输出的日志格式进行改造，这里我们仍将Nginx日志输出设置为json格式，下面仅列出Nginx配置文件nginx.conf中日志格式和日志文件定义部分，定义好的日志格式与日志文件如下：
 
 ```
-map $http_x_forwarded_for $clientRealIp {	
+
+http {
+	...
+
+    map $http_x_forwarded_for $clientRealIp {
         "" $remote_addr;
         ~^(?P<firstAddr>[0-9\.]+),?.*$ $firstAddr;
+    }
+
+    log_format nginx_log_json '{"accessip_list":"$proxy_add_x_forwarded_for",'
+                              '"client_ip":"$clientRealIp","http_host":"$host",' 									'"@timestamp":"$time_iso8601","method":"$request_method",'        		'"url":"$request_uri","status":"$status","http_referer":"$http_referer",'                     '"body_bytes_sent":"$body_bytes_sent","request_time":"$request_time",'    '"http_user_agent":"$http_user_agent","total_bytes_sent":"$bytes_sent","server_ip":"$server_addr"}';
+
+
+    access_log  /var/log/nginx/access.log  nginx_log_json;
 }
+	
 ```
 
-log_format nginx_log_json '{"accessip_list":"$proxy_add_x_forwarded_for","client_ip":"$clientRealIp","http_host":"$host","@timestamp":"$time_iso8601","method":"$request_method","url":"$request_uri","status":"$status","http_referer":"$http_referer","body_bytes_sent":"$body_bytes_sent","request_time":"$request_time","http_user_agent":"$http_user_agent","total_bytes_sent":"$bytes_sent","server_ip":"$server_addr"}';
-    
-access_log  /var/log/nginx/access.log  nginx_log_json;	
+
 
 ### 8.5 验证日志输出
 
@@ -1620,3 +1630,92 @@ access_log  /var/log/nginx/access.log  nginx_log_json;
 在这个输出中，可以看到，client_ip和accessip_list输出的异同，client_ip字段输出的就是真实的客户端IP地址，而accessip_list输出是代理叠加而成的IP列表，第一条日志，是直接访问http://172.16.213.157/img/guonian.png不经过任何代理得到的输出日志，第二条日志，是经过一层代理访问http://172.16.213.120/img/guonian.png 而输出的日志，第三条日志，是经过二层代理访问http://172.16.213.84/img/guonian.png 得到的日志输出。
 
 Nginx中获取客户端真实IP的方法很简单，无需做特殊处理，这也给后面编写logstash的事件配置文件减少了很多工作量。
+
+### 8.6 配置filebeat
+
+filebeat是安装在Nginx服务器上的，这里给出配置好的filebeat.yml文件的内容：
+
+```yaml
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+   - /var/log/nginx/access.log
+  fields:
+    log_topic: nginxlogs
+filebeat.config.modules:
+  path: ${path.config}/modules.d/*.yml
+  reload.enabled: false
+name: 172.16.213.157
+output.kafka:
+  enabled: true
+  hosts: ["172.16.213.51:9092", "172.16.213.75:9092", "172.16.213.109:9092"]
+  version: "0.10"
+  topic: '%{[fields.log_topic]}' 
+  partition.round_robin:
+    reachable_only: true
+  worker: 2
+  required_acks: 1
+  compression: gzip
+  max_message_bytes: 10000000
+logging.level: debug
+```
+
+### 8.7 配置logstash
+
+由于在Nginx输出日志中已经定义好了日志格式，因此在logstash中就不需要对日志进行过滤和分析操作了，下面直接给出logstash事件配置文件kafka_nginx_into_es.conf的内容：
+
+```
+input {
+    kafka {
+        bootstrap_servers => "172.16.213.51:9092,172.16.213.75:9092,172.16.213.109:9092"
+        topics => "nginxlogs"		#指定输入源中需要从哪个topic中读取数据，这里会自动新建一个名为nginxlogs的topic
+        group_id => "logstash"
+        codec => json {
+           charset => "UTF-8"
+        }
+        add_field => { "[@metadata][myid]" => "nginxaccess-log" }   #增加一个字段，用于标识和判断，在output输出中会用到。
+    }
+}
+filter {
+    if [@metadata][myid] == "nginxaccess-log" {
+     mutate {
+        gsub => ["message", "\\x", "\\\x"]   #这里的message就是message字段，也就是日志的内容。这个插件的作用是将message字段内容中UTF-8单字节编码做替换处理，这是为了应对URL有中文出现的情况。
+      }
+      if ( 'method":"HEAD' in [message] ) {    #如果message字段中有HEAD请求，就删除此条信息。
+           drop {}
+      }
+      json {
+            source => "message"
+            remove_field => "prospector"      
+            remove_field => "beat"           
+            remove_field => "source"
+            remove_field => "input"
+            remove_field => "offset"
+            remove_field => "fields"
+            remove_field => "host"
+            remove_field => "@version"
+            remove_field => "message"
+        }
+    }
+}
+output {
+    if [@metadata][myid] == "nginxaccess-log" {
+        elasticsearch {
+            hosts => ["172.16.213.37:9200","172.16.213.77:9200","172.16.213.78:9200"]
+            index => "logstash_nginxlogs-%{+YYYY.MM.dd}"   #指定Nginx日志在elasticsearch中索引的名称，这个名称会在Kibana中用到。索引的名称推荐以logstash开头，后面跟上索引标识和时间。
+        }
+    }
+}
+```
+
+这个logstash事件配置文件非常简单，没对日志格式或逻辑做任何特殊处理，由于整个配置文件跟elk收集apache日志的配置文件基本相同，因此不再做过多介绍。所有配置完成后，就可以启动logstash了，执行如下命令：
+
+```shell
+[root@logstashserver ~]# cd /usr/local/logstash
+[root@logstashserver logstash]# nohup bin/logstash -f kafka_nginx_into_es.conf &
+```
+
+### 8.8 配置Kibana
+
+Filebeat从nginx上收集数据到kafka，然后logstash从kafka拉取数据，如果数据能够正确发送到elasticsearch，我们就可以在Kibana中配置索引了。
