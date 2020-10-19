@@ -185,7 +185,7 @@ Kafka中的topic是以partition的形式存放的，每一个topic都可以设�
 
 每当用户往某个Topic发送数据时，数据会被hash到不同的partition,这些partition位于不同的集群节点上，所以每个消息都会被记录一个offset消息号，就是offset号。消费者通过这个offset号去查询读取这个消息。
 
-**发送消息流程为:**
+**发送消息流程为:** 
 
 首先获取topic的所有Patition，如果客户端不指定Patition，也没有指定Key的话，使用自增长的数字取余数的方式实现指定的Partition。这样Kafka将平均的向Partition中生产数据。如果想要控制发送的partition，则有两种方式，一种是指定partition，另一种就是根据Key自己写算法。实现其partition方法。
 
@@ -370,11 +370,11 @@ Prospector负责管理Harvster，它会找到所有需要进行读取的数据�
 
    集群中每个角色的含义介绍如下:
 
-   - **master node:**
+   - **master node:** 
      可以理解为主节点，主要用于元数据(metadata)的处理，比如索引的新增、删除、分片分配等，以及管理集群各个节点的状态。elasticsearch集群中可以定义多个主节点，但是，在同一时刻，只有一个主节点起作用，其它定义的主节点，是作为主节点的候选节点存在。当一个主节点故障后，集群会从候选主节点中选举出新的主节点。
-   - **data node:**
+   - **data node:** 
      数据节点，这些节点上保存了数据分片。它负责数据相关操作，比如分片的CRUD、搜索和整合等操作。数据节点上面执行的操作都比较消耗 CPU、内存和I/O资源，因此数据节点服务器要选择较好的硬件配置，才能获取高效的存储和分析性能。
-   - **client node:**
+   - **client node:** 
      客户端节点，属于可选节点，是作为任务分发用的，它里面也会存元数据，但是它不会对元数据做任何修改。client node存在的好处是可以分担data node的一部分压力，因为elasticsearch的查询是两层汇聚的结果，第一层是在data node上做查询结果汇聚，然后把结果发给client node，client node接收到data node发来的结果后再做第二次的汇聚，然后把最终的查询结果返回给用户。这样，client node就替data node分担了部分压力
 
 2. **安装Elasticsearch与授权**
@@ -575,22 +575,26 @@ Prospector负责管理Harvster，它会找到所有需要进行读取的数据�
 
    每个配置项含义如下:
 
-   - **tickTime:** zookeeper使用的基本时间度量单位，以毫秒为单位，它用来控制心跳和超时。2000表示2 tickTime。更低的tickTime值可以更快地发现超时问题。
+   - **tickTime:**  zookeeper使用的基本时间度量单位，以毫秒为单位，它用来控制心跳和超时。2000表示2 tickTime。更低的tickTime值可以更快地发现超时问题。
 
-   - **initLimit:** 这个配置项是用来配置Zookeeper集群中Follower服务器初始化连接到Leader时，最长能忍受多少个心跳时间间隔数（也就是tickTime）
+   - **initLimit:**  这个配置项是用来配置Zookeeper集群中Follower服务器初始化连接到Leader时，最长能忍受多少个心跳时间间隔数（也就是tickTime）
 
-   - **syncLimit:** 这个配置项标识Leader与Follower之间发送消息，请求和应答时间长度最长不能超过多少个tickTime的时间长度
+   - **syncLimit:**  这个配置项标识Leader与Follower之间发送消息，请求和应答时间长度最长不能超过多少个tickTime的时间长度
 
-   - **dataDir:** 必须配置项，用于配置存储快照文件的目录。需要事先创建好这个目录，如果没有配置dataLogDir，那么事务日志也会存储在此目录。
+   - **dataDir:**  必须配置项，用于配置存储快照文件的目录。需要事先创建好这个目录，如果没有配置dataLogDir，那么事务日志也会存储在此目录。
 
-   - **clientPort:** zookeeper服务进程监听的TCP端口，默认情况下，服务端会监听2181端口。
+   - **clientPort:**  zookeeper服务进程监听的TCP端口，默认情况下，服务端会监听2181端口。
 
-   - **server.A=B:C:D:** 其中A是一个数字，表示这是第几个服务器；B是这个服务器的IP地址；C表示的是这个服务器与集群中的Leader服务器通信的端口；D 表示如果集群中的Leader服务器宕机了，需要一个端口来重新进行选举，选出一个新的 Leader，而这个端口就是用来执行选举时服务器相互通信的端口。
-
-     除了修改zoo.cfg配置文件外，集群模式下还要配置一个文件myid，这个文件需要放在dataDir配置项指定的目录下，这个文件里面只有一个数字，如果要写入1，表示第一个服务器，与zoo.cfg文本中的server.1中的1对应，以此类推，在集群的第二个服务器zoo.cfg配置文件中dataDir配置项指定的目录下创建myid文件，写入2，这个2与zoo.cfg文本中的server.2中的2对应。Zookeeper在启动时会读取这个文件，得到里面的数据与zoo.cfg里面的配置信息比较，从而判断每个zookeeper server的对应关系。 
-
-     为了保证zookeeper集群配置的规范性，建议将zookeeper集群中每台服务器的安装和配置文件路径都保存一致。
-
+   - **server.A=B:C:D:**  其中A是一个数字，表示这是第几个服务器；B是这个服务器的IP地址；C表示的是这个服务器与集群中的Leader服务器通信的端口；D 表示如果集群中的Leader服务器宕机了，需要一个端口来重新进行选举，选出一个新的 Leader，而这个端口就是用来执行选举时服务器相互通信的端口。
+   
+     
+   
+   除了修改zoo.cfg配置文件外，集群模式下还要配置一个文件myid，这个文件需要放在dataDir配置项指定的目录下，这个文件里面只有一个数字，如果要写入1，表示第一个服务器，与zoo.cfg文本中的server.1中的1对应，以此类推，在集群的第二个服务器zoo.cfg配置文件中dataDir配置项指定的目录下创建myid文件，写入2，这个2与zoo.cfg文本中的server.2中的2对应。Zookeeper在启动时会读取这个文件，得到里面的数据与zoo.cfg里面的配置信息比较，从而判断每个zookeeper server的对应关系。 
+   
+   
+   
+   为了保证zookeeper集群配置的规范性，建议将zookeeper集群中每台服务器的安装和配置文件路径都保存一致。
+   
 3. **启动zookeeper集群**
 
     在三个节点依次执行如下命令，启动Zookeeper服务:
@@ -646,18 +650,18 @@ Prospector负责管理Harvster，它会找到所有需要进行读取的数据�
 
    每个配置项含义如下:
 
-   - **broker.id:**每一个broker在集群中的唯一表示，要求是正数。当该服务器的IP地址发生改变时，broker.id没有变化，则不会影响consumers的消息情况。
-   - **listeners:**设置kafka的监听地址与端口，可以将监听地址设置为主机名或IP地址，这里将监听地址设置为IP地址。
-   - **log.dirs:**这个参数用于配置kafka保存数据的位置，kafka中所有的消息都会存在这个目录下。可以通过逗号来指定多个路径， kafka会根据最少被使用的原则选择目录分配新的parition。需要注意的是，kafka在分配parition的时候选择的规则不是按照磁盘的空间大小来定的，而是根据分配的 parition的个数多小而定。
-   - **num.partitions:** 这个参数用于设置新创建的topic有多少个分区，可以根据消费者实际情况配置，配置过小会影响消费性能。这里配置6个。
-   - **log.retention.hours:** 这个参数用于配置kafka中消息保存的时间，还支持log.retention.minutes和 log.retention.ms配置项。这三个参数都会控制删除过期数据的时间，推荐使用log.retention.ms。如果多个同时设置，那么会选择最小的那个。
-   - **log.segment.bytes:** 配置partition中每个segment数据文件的大小，默认是1GB，超过这个大小会自动创建一个新的segment file。
-   - **zookeeper.connect:** 这个参数用于指定zookeeper所在的地址，它存储了broker的元信息。 这个值可以通过逗号设置多个值，每个值的格式均为:hostname:port/path，每个部分的含义如下:
+   - **broker.id:**  每一个broker在集群中的唯一表示，要求是正数。当该服务器的IP地址发生改变时，broker.id没有变化，则不会影响consumers的消息情况。
+   - **listeners:**   设置kafka的监听地址与端口，可以将监听地址设置为主机名或IP地址，这里将监听地址设置为IP地址。
+   - **log.dirs:**  这个参数用于配置kafka保存数据的位置，kafka中所有的消息都会存在这个目录下。可以通过逗号来指定多个路径， kafka会根据最少被使用的原则选择目录分配新的parition。需要注意的是，kafka在分配parition的时候选择的规则不是按照磁盘的空间大小来定的，而是根据分配的 parition的个数多小而定。
+   - **num.partitions:**  这个参数用于设置新创建的topic有多少个分区，可以根据消费者实际情况配置，配置过小会影响消费性能。这里配置6个。
+   - **log.retention.hours:**  这个参数用于配置kafka中消息保存的时间，还支持log.retention.minutes和 log.retention.ms配置项。这三个参数都会控制删除过期数据的时间，推荐使用log.retention.ms。如果多个同时设置，那么会选择最小的那个。
+   - **log.segment.bytes:**  配置partition中每个segment数据文件的大小，默认是1GB，超过这个大小会自动创建一个新的segment file。
+   - **zookeeper.connect:**  这个参数用于指定zookeeper所在的地址，它存储了broker的元信息。 这个值可以通过逗号设置多个值，每个值的格式均为:hostname:port/path，每个部分的含义如下:
      	hostname:表示zookeeper服务器的主机名或者IP地址，这里设置为IP地址。
        	port: 表示是zookeeper服务器监听连接的端口号。
        	/path:表示kafka在zookeeper上的根目录。如果不设置，会使用根目录。
-   - **auto.create.topics.enable:**这个参数用于设置是否自动创建topic，如果请求一个topic时发现还没有创建， kafka会在broker上自动创建一个topic，如果需要严格的控制topic的创建，那么可以设置auto.create.topics.enable为false，禁止自动创建topic。
-   - **delete.topic.enable:**在0.8.2版本之后，Kafka提供了删除topic的功能，但是默认并不会直接将topic数据物理删除。如果要从物理上删除（即删除topic后，数据文件也会一同删除），就需要设置此配置项为true。
+   - **auto.create.topics.enable:** 这个参数用于设置是否自动创建topic，如果请求一个topic时发现还没有创建， kafka会在broker上自动创建一个topic，如果需要严格的控制topic的创建，那么可以设置auto.create.topics.enable为false，禁止自动创建topic。
+   - **delete.topic.enable:** 在0.8.2版本之后，Kafka提供了删除topic的功能，但是默认并不会直接将topic数据物理删除。如果要从物理上删除（即删除topic后，数据文件也会一同删除），就需要设置此配置项为true。
 
 3. **启动kafka集群**
 
@@ -733,27 +737,27 @@ filebeat.inputs:
    
    配置项的含义介绍如下:
    
-   - **filebeat.inp type :** 数据的输入类型，这里是log，即日志，是默认值，还可以指定为stdin，即标准输入。
-   - **enabled: true:**启用手工配置filebeat，而不是采用模块方式配置filebeat。
-   - **paths:**用于指定要监控的日志文件，可以指定一个完整路径的文件，也可以是一个模糊匹配格式，例如:/data/nginx/logs/nginx_*.log，该配置表示将获取/data/nginx/logs目录下的所有以.log结尾的文件，注意这里有个破折号“-”，要在paths配置项基础上进行缩进，不然启动filebeat会报错，另外破折号前面不能有tab缩进，建议通过空格方式缩进。
+   - **filebeat.inp type :**  数据的输入类型，这里是log，即日志，是默认值，还可以指定为stdin，即标准输入。
+   - **enabled: true:** 启用手工配置filebeat，而不是采用模块方式配置filebeat。
+   - **paths:** 用于指定要监控的日志文件，可以指定一个完整路径的文件，也可以是一个模糊匹配格式，例如:/data/nginx/logs/nginx_*.log，该配置表示将获取/data/nginx/logs目录下的所有以.log结尾的文件，注意这里有个破折号“-”，要在paths配置项基础上进行缩进，不然启动filebeat会报错，另外破折号前面不能有tab缩进，建议通过空格方式缩进。
       `- /var/log/*.log`，该配置表示将获取/var/log目录的所有子目录中以”.log”结尾的文件，而不会去查找/var/log目录下以”.log”结尾的文件。
-   - **name:** 设置filebeat收集的日志中对应主机的名字，如果配置为空，则使用该服务器的主机名。这里设置为IP，便于区分多台主机的日志信息。
-   - **output.kafka:**filebeat支持多种输出，支持向kafka，logstash，elasticsearch输出数据，这里的设置是将数据输出到kafka。
-   - **enabled:**表明这个模块是启动的。
-   - **host:** 指定输出数据到kafka集群上，地址为kafka集群IP加端口号。
-   - **topic:**指定要发送数据给kafka集群的哪个topic，若指定的topic不存在，则会自动创建此topic。注意topic的写法，在filebeat6.x之前版本是通过“%{[type]}”来自动获取document_type配置项的值。而在filebeat6.x之后版本是通过'%{[fields][log_topic]}'来获取日志分类的。
-   - **logging.level:**定义filebeat的日志输出级别，有critical、error、warning、info、debug五种级别可选，在调试的时候可选择debug模式。
+   - **name:**  设置filebeat收集的日志中对应主机的名字，如果配置为空，则使用该服务器的主机名。这里设置为IP，便于区分多台主机的日志信息。
+   - **output.kafka:** filebeat支持多种输出，支持向kafka，logstash，elasticsearch输出数据，这里的设置是将数据输出到kafka。
+   - **enabled:** 表明这个模块是启动的。
+   - **host:**  指定输出数据到kafka集群上，地址为kafka集群IP加端口号。
+   - **topic:** 指定要发送数据给kafka集群的哪个topic，若指定的topic不存在，则会自动创建此topic。注意topic的写法，在filebeat6.x之前版本是通过“%{[type]}”来自动获取document_type配置项的值。而在filebeat6.x之后版本是通过'%{[fields][log_topic]}'来获取日志分类的。
+   - **logging.level:** 定义filebeat的日志输出级别，有critical、error、warning、info、debug五种级别可选，在调试的时候可选择debug模式。
 
 4. **启动filebeat收集日志**
 
    所有配置完成之后，就可以启动filebeat，开启收集日志进程了，启动方式如下:
 
-    ```
-[root@filebeatserver ~]# cd /usr/local/filebeat
-[root@filebeatserver filebeat]# nohup  ./filebeat -e -c filebeat.yml &
-    ```
+   ```shell
+   [root@filebeatserver ~]# cd /usr/local/filebeat
+   [root@filebeatserver filebeat]# nohup  ./filebeat -e -c filebeat.yml &
+   ```
 
-   这样，就把filebeat进程放到后台运行起来了。启动后，在当前目录下会生成一个nohup.out文件，可以查看filebeat启动日志和运行状态。
+	这样，就把filebeat进程放到后台运行起来了。启动后，在当前目录下会生成一个nohup.out文件，可以查看filebeat启动日志和运行状态。
 
 5. **filebeat输出信息格式解读**
 
@@ -764,7 +768,8 @@ filebeat.inputs:
    filebeat输出信息格式解读
 
    ```
-   {"@timestamp":"2018-08-16T11:27:48.755Z",
+   {
+   "@timestamp":"2018-08-16T11:27:48.755Z",
    "@metadata":{"beat":"filebeat","type":"doc","version":"6.3.2","topic":"osmessages"},
    "beat":{"name":"filebeatserver","hostname":"filebeatserver","version":"6.3.2"},
    "host":{"name":"filebeatserver"},
@@ -779,33 +784,34 @@ filebeat.inputs:
 
    从这个输出可以看到，输出日志被修改成了JSON格式，日志总共分为10个字段，分别是"@timestamp"、"@metadata"、"beat"、"host"、"source"、"offset"、"message"、"prospector"、"input"和"fields"字段，每个字段含义如下:
 
-   - **@timestamp:**时间字段，表示读取到该行内容的时间。
+   - **@timestamp:** 时间字段，表示读取到该行内容的时间。
 
-   - **@metadata:**元数据字段，此字段只有是跟Logstash进行交互使用。
+   - **@metadata:** 元数据字段，此字段只有是跟Logstash进行交互使用。
 
-   - **beat:**beat属性信息，包含beat所在的主机名、beat版本等信息。
+   - **beat:** beat属性信息，包含beat所在的主机名、beat版本等信息。
 
-   - **host:** 主机名字段，输出主机名，如果没主机名，输出主机对应的IP。
+   - **host:**  主机名字段，输出主机名，如果没主机名，输出主机对应的IP。
 
-   - **source:** 表示监控的日志文件的全路径。
+   - **source:**  表示监控的日志文件的全路径。
 
-   - **offset:** 表示该行日志的偏移量。
+   - **offset:**  表示该行日志的偏移量。
 
-   - **message:** 表示真正的日志内容。
+   - **message:**  表示真正的日志内容。
 
-   - **prospector:**filebeat对应的消息类型。
+   - **prospector:** filebeat对应的消息类型。
 
-   - **input:**日志输入的类型，可以有多种输入类型，例如Log、Stdin、redis、Docker、TCP/UDP等
+   - **input:** 日志输入的类型，可以有多种输入类型，例如Log、Stdin、redis、Docker、TCP/UDP等
 
-   - **fields:**topic对应的消息字段或自定义增加的字段。
-     通过filebeat接收到的内容，默认增加了不少字段，但是有些字段对数据分析来说没有太大用处，所以有时候需要删除这些没用的字段，在filebeat配置文件中添加如下配置，即可删除不需要的字段:
-
+   - **fields:** topic对应的消息字段或自定义增加的字段。
+     
+   通过filebeat接收到的内容，默认增加了不少字段，但是有些字段对数据分析来说没有太大用处，所以有时候需要删除这些没用的字段，在filebeat配置文件中添加如下配置，即可删除不需要的字段:
+     
      ```yaml
      processors:
        - drop_fields:
         fields: ["beat", "input", "source", "offset"]
-     ```
-这个设置表示删除"beat"、"input"、"source"、"offset" 四个字段，其中， @timestamp 和@metadata字段是不能删除的。做完这个设置后，再次查看kafka中的输出日志，已经不再输出这四个字段信息了。
+   ```
+     这个设置表示删除"beat"、"input"、"source"、"offset" 四个字段，其中， @timestamp 和@metadata字段是不能删除的。做完这个设置后，再次查看kafka中的输出日志，已经不再输出这四个字段信息了。
 
 ### 6.8 安装并配置Logstash服务
 
@@ -830,28 +836,28 @@ filebeat.inputs:
 
     input插件主要用于接收数据，Logstash支持接收多种数据源，常用的有如下几种:
 
-    - **file:** 读取一个文件，这个读取功能有点类似于linux下面的tail命令，一行一行的实时读取。
-    - **syslog:** 监听系统514端口的syslog messages，并使用RFC3164格式进行解析。
-    - **redis:** Logstash可以从redis服务器读取数据，此时redis类似于一个消息缓存组件。
-    - **kafka:**Logstash也可以从kafka集群中读取数据，kafka加Logstash的架构一般用在数据量较大的业务场景，kafka可用作数据的缓冲和存储。
-    - **filebeat:**filebeat是一个文本日志收集器，性能稳定，并且占用系统资源很少，Logstash可以接收filebeat发送过来的数据。
+    - **file:**  读取一个文件，这个读取功能有点类似于linux下面的tail命令，一行一行的实时读取。
+    - **syslog:**  监听系统514端口的syslog messages，并使用RFC3164格式进行解析。
+    - **redis:**  Logstash可以从redis服务器读取数据，此时redis类似于一个消息缓存组件。
+    - **kafka:** Logstash也可以从kafka集群中读取数据，kafka加Logstash的架构一般用在数据量较大的业务场景，kafka可用作数据的缓冲和存储。
+    - **filebeat:** filebeat是一个文本日志收集器，性能稳定，并且占用系统资源很少，Logstash可以接收filebeat发送过来的数据。
 
 4. **常用的filter**
 
     filter插件主要用于数据的过滤、解析和格式化，也就是将非结构化的数据解析成结构化的、可查询的标准化数据。常见的filter插件有如下几个:
 
-    - **grok:** grok是Logstash最重要的插件，可解析并结构化任意数据，支持正则表达式，并提供了很多内置的规则和模板可供使用。此插件使用最多，但也最复杂。
-    - **mutate:**  此插件提供了丰富的基础类型数据处理能力。包括类型转换，字符串处理和字段处理等。
-    - **date:** 此插件可以用来转换你的日志记录中的时间字符串。
-    - **GeoIP:** 此插件可以根据IP地址提供对应的地域信息，包括国别，省市，经纬度等，对于可视化地图和区域统计非常有用。
+    - **grok:**  grok是Logstash最重要的插件，可解析并结构化任意数据，支持正则表达式，并提供了很多内置的规则和模板可供使用。此插件使用最多，但也最复杂。
+    - **mutate:**   此插件提供了丰富的基础类型数据处理能力。包括类型转换，字符串处理和字段处理等。
+    - **date:**  此插件可以用来转换你的日志记录中的时间字符串。
+    - **GeoIP:**  此插件可以根据IP地址提供对应的地域信息，包括国别，省市，经纬度等，对于可视化地图和区域统计非常有用。
 
 5. **常用的output**
     output插件用于数据的输出，一个Logstash事件可以穿过多个output，直到所有的output处理完毕，这个事件才算结束。输出插件常见的有如下几种:
 
-    - **elasticsearch:** 发送数据到elasticsearch。
-    - **file:**  发送数据到文件中。
-    - **redis:**  发送数据到redis中，从这里可以看出，redis插件既可以用在input插件中，也可以用在output插件中。
-    - **kafka:** 发送数据到kafka中，与redis插件类似，此插件也可以用在Logstash的输入和输出插件中。
+    - **elasticsearch:**  发送数据到elasticsearch。
+    - **file:**   发送数据到文件中。
+    - **redis:**   发送数据到redis中，从这里可以看出，redis插件既可以用在input插件中，也可以用在output插件中。
+    - **kafka:**  发送数据到kafka中，与redis插件类似，此插件也可以用在Logstash的输入和输出插件中。
 
 6. **Logstash配置文件入门**
 
@@ -1034,10 +1040,10 @@ filebeat.inputs:
 
    其中，每个配置项的含义介绍如下:
 
-   - **server.port:**kibana绑定的监听端口，默认是5601。
-   - **server.host:**kibana绑定的IP地址，如果内网访问，设置为内网地址即可。
-   - **elasticsearch.url:**kibana访问ElasticSearch的地址，如果是ElasticSearch集群，添加任一集群节点IP即可，官方推荐是设置为ElasticSearch集群中client node角色的节点IP。
-   - **kibana.index:**用于存储kibana数据信息的索引，这个可以在kibanaweb界面中看到。
+   - **server.port:** kibana绑定的监听端口，默认是5601。
+   - **server.host:** kibana绑定的IP地址，如果内网访问，设置为内网地址即可。
+   - **elasticsearch.url:** kibana访问ElasticSearch的地址，如果是ElasticSearch集群，添加任一集群节点IP即可，官方推荐是设置为ElasticSearch集群中client node角色的节点IP。
+   - **kibana.index:** 用于存储kibana数据信息的索引，这个可以在kibanaweb界面中看到。
 
 3. **启动Kibana服务与web配置**
 
@@ -1531,10 +1537,10 @@ output是Logstash的最后阶段，一个事件可以经过多个输出，而一
 
    上面配置中每个配置项含义如下:
 
-   - **host:**是一个数组类型的值，后面跟的值是elasticsearch节点的地址与端口，默认端口是9200。可添加多个地址。
-   - **index:**写入elasticsearch的索引的名称，这里可以使用变量。Logstash提供了%{+YYYY.MM.dd}这种写法。在语法解析的时候，看到以+ 号开头的，就会自动认为后面是时间格式，尝试用时间格式来解析后续字符串。这种以天为单位分割的写法，可以很容易的删除老的数据或者搜索指定时间范围内的数据。此外，注意索引名中不能有大写字母。
-   - **manage_template:** 用来设置是否开启logstash自动管理模板功能，如果设置为false将关闭自动管理模板功能。如果我们自定义了模板，那么应该设置为false。
-   - **template_name:** 这个配置项用来设置在Elasticsearch中模板的名称。
+   - **host:** 是一个数组类型的值，后面跟的值是elasticsearch节点的地址与端口，默认端口是9200。可添加多个地址。
+   - **index:** 写入elasticsearch的索引的名称，这里可以使用变量。Logstash提供了%{+YYYY.MM.dd}这种写法。在语法解析的时候，看到以+ 号开头的，就会自动认为后面是时间格式，尝试用时间格式来解析后续字符串。这种以天为单位分割的写法，可以很容易的删除老的数据或者搜索指定时间范围内的数据。此外，注意索引名中不能有大写字母。
+   - **manage_template:**  用来设置是否开启logstash自动管理模板功能，如果设置为false将关闭自动管理模板功能。如果我们自定义了模板，那么应该设置为false。
+   - **template_name:**  这个配置项用来设置在Elasticsearch中模板的名称。
 
 
 
@@ -1560,17 +1566,17 @@ ELK收集日志常用的有两种方式，分别是:
 
 Nginx跟Apache一样，都支持自定义输出日志格式，在进行Nginx日志格式定义前，先来了解一下关于多层代理获取用户真实IP的几个概念。
 
-- **remote_addr:**表示客户端地址，但有个条件，如果没有使用代理，这个地址就是客户端的真实IP，如果使用了代理，这个地址就是上层代理的IP。
+- **remote_addr:** 表示客户端地址，但有个条件，如果没有使用代理，这个地址就是客户端的真实IP，如果使用了代理，这个地址就是上层代理的IP。
 
-- **X-Forwarded-For:**简称XFF，这是一个HTTP扩展头，格式为 X-Forwarded-For: client, proxy1, proxy2，如果一个HTTP请求到达服务器之前，经过了三个代理 Proxy1、Proxy2、Proxy3，IP 分别为 IP1、IP2、IP3，用户真实IP为 IP0，那么按照 XFF标准，服务端最终会收到以下信息:
+- **X-Forwarded-For:** 简称XFF，这是一个HTTP扩展头，格式为 X-Forwarded-For: client, proxy1, proxy2，如果一个HTTP请求到达服务器之前，经过了三个代理 Proxy1、Proxy2、Proxy3，IP 分别为 IP1、IP2、IP3，用户真实IP为 IP0，那么按照 XFF标准，服务端最终会收到以下信息:
   X-Forwarded-For: IP0, IP1, IP2
 
 由此可知，IP3这个地址X-Forwarded-For并没有获取到，而remote_addr刚好获取的就是IP3的地址。
 还要几个容易混淆的变量，这里也列出来做下说明:
 
-- **$remote_addr:**此变量如果走代理访问，那么将获取上层代理的IP，如果不走代理，那么就是客户端真实IP地址。
-- **$http_x_forwarded_for:**此变量获取的就是X-Forwarded-For的值。
-- **$proxy_add_x_forwarded_for:**此变量是$http_x_forwarded_for和$remote_addr两个变量之和。
+- **$remote_addr:** 此变量如果走代理访问，那么将获取上层代理的IP，如果不走代理，那么就是客户端真实IP地址。
+- **$http_x_forwarded_for:** 此变量获取的就是X-Forwarded-For的值。
+- **$proxy_add_x_forwarded_for:** 此变量是$http_x_forwarded_for和$remote_addr两个变量之和。
 
 ![image-20201016170709725](./img/image-20201016170709725.png)
 
