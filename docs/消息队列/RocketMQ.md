@@ -211,18 +211,551 @@ Topic是一个逻辑上的概念，实际上Message是在每个Broker上以Queue
 - 优点： 在 master 宕机时，消费者可以从 slave 读取消息，消息的实时性不会受影响，性能几乎和多 master 一样。
 - 缺点：使用异步复制的同步方式有可能会有消息丢失的问题。
 
-### 7.4 多Master多Slave 同步双写模式
+### 7.4 多Master 多 Slave 同步双写模式
 
 同多 master 多 slave 异步复制模式类似，区别在于 master 和 slave 之间的数据同步方式。
 
 - 优点：同步双写的同步模式能保证数据不丢失。
 
-- 缺点：发送单个消息 RT 会略长，性能相比异步复制低10%左右。
+- 缺点：发送单个消息 RT 会略长，性能相比异步复制低10%左右。发送单个消息的`RT`会略高，且目前版本在主节点宕机后，备机不能自动切换为主机。
 
-  
 
-- 刷盘策略：同步刷盘和异步刷盘（指的是节点自身数据是同步还是异步存储）
+## 八、双主双从集群搭建
 
-- 同步方式：同步双写和异步复制（指的一组 master 和 slave 之间数据的同步）
+### 8.1 总体架构
 
-  > 注意：要保证数据可靠，需采用同步刷盘和同步双写的方式，但性能会较其他方式低。
+消息高可用采用2`master`-2`slave`（同步双写）方式
+
+![img](./img/1580998-20200609183942488-1130690477.png)
+
+### 8.2 集群工作流程
+
+1. 启动`NameServer`，`NameServer`起来后监听端口，等待`Broker`、`Producer`、`Consumer`连上来，相当于一个路由控制中心。
+2. `Broker`启动，跟所有的`NameServer`保持长连接，定时发送心跳包。心跳包中包含当前`Broker`信息(`IP`+端口等)以及存储所有`Topic`信息。注册成功后，`NameServer`集群中就有`Topic`跟`Broker`的映射关系。
+3. 收发消息前，先创建`Topic`，创建`Topic`时需要指定该`Topic`要存储在哪些`Broker`上，也可以在发送消息时自动创建`Topic`。
+4. `Producer`发送消息，启动时先跟`NameServer`集群中的其中一台建立长连接，并从`NameServer`中获取当前发送的`Topic`存在哪些`Broker`上，轮询从队列列表中选择一个队列，然后与队列所在的`Broker`建立长连接从而向`Broker`发消息。
+5. `Consumer`跟`Producer`类似，跟其中一台`NameServer`建立长连接，获取当前订阅`Topic`存在哪些`Broker`上，然后直接跟`Broker`建立连接通道，开始消费消息。
+
+### 8.3 服务器环境
+
+选择两个或四个服务器（根据实际情况选择）
+
+| **序号** | **IP**       | **角色**                 | **架构模式**    |
+| -------- | ------------ | ------------------------ | --------------- |
+| 1        | 192.168.2.12 | nameserver、brokerserver | Master1、Slave2 |
+| 2        | 192.168.2.13 | nameserver、brokerserver | Master2、Slave1 |
+
+### 3.4 `Host`添加信息
+
+```
+vim /etc/hosts
+```
+
+配置如下:
+
+```
+# nameserver
+192.168.2.12 rocketmq-nameserver1
+192.168.2.13 rocketmq-nameserver2
+# broker
+192.168.2.12 rocketmq-master1
+192.168.2.12 rocketmq-slave2
+192.168.2.13 rocketmq-master2
+192.168.2.13 rocketmq-slave1
+```
+
+配置完成后, 重启网卡
+
+```
+systemctl restart network
+```
+
+### 8.4 防火墙配置
+
+宿主机需要远程访问虚拟机的`rocketmq`服务和`web`服务，需要开放相关的端口号，简单粗暴的方式是直接关闭防火墙
+
+```bash
+# 关闭防火墙
+systemctl stop firewalld.service 
+# 查看防火墙的状态
+firewall-cmd --state 
+# 禁止firewall开机启动
+systemctl disable firewalld.service
+```
+
+[![img](https://img2020.cnblogs.com/blog/1580998/202006/1580998-20200609184046749-1812798366.png)](https://img2020.cnblogs.com/blog/1580998/202006/1580998-20200609184046749-1812798366.png)
+
+或者为了安全，只开放特定的端口号，`RocketMQ`默认使用3个端口：9876 、10911 、11011 。如果防火墙没有关闭的话，那么防火墙就必须开放这些端口：
+
+- `nameserver` 默认使用 9876 端口
+- `master` 默认使用 10911 端口
+- `slave` 默认使用11011 端口
+
+执行以下命令：
+
+```
+# 开放name server默认端口
+firewall-cmd --remove-port=9876/tcp --permanent
+# 开放master默认端口
+firewall-cmd --remove-port=10911/tcp --permanent
+# 开放slave默认端口 (当前集群模式可不开启)
+firewall-cmd --remove-port=11011/tcp --permanent 
+# 重启防火墙
+firewall-cmd --reload
+```
+
+### 8.5 环境变量配置
+
+```
+vim /etc/profile
+```
+
+在`profile`文件的末尾加入如下命令
+
+```
+#set rocketmq 该目录为rocketmq二进制包解压目录
+ROCKETMQ_HOME=/usr/local/rocketmq
+PATH=$PATH:$ROCKETMQ_HOME/bin
+export ROCKETMQ_HOME PATH
+```
+
+输入:wq! 保存并退出， 并使得配置立刻生效：
+
+```bash
+source /etc/profile
+```
+
+### 8.6 创建消息存储路径
+
+```
+mkdir /usr/local/rocketmq/store
+mkdir /usr/local/rocketmq/store/commitlog
+mkdir /usr/local/rocketmq/store/consumequeue
+mkdir /usr/local/rocketmq/store/index
+```
+
+```
+mkdir /usr/local/rocketmq/store-s
+mkdir /usr/local/rocketmq/store-s/commitlog
+mkdir /usr/local/rocketmq/store-s/consumequeue
+mkdir /usr/local/rocketmq/store-s/index
+```
+
+注意：master 和 slave 的store 必须分开，不然会报错
+
+```
+java.lang.RuntimeException: Lock failed,MQ already started
+	at org.apache.rocketmq.store.DefaultMessageStore.start(DefaultMessageStore.java:214)
+	at org.apache.rocketmq.broker.BrokerController.start(BrokerController.java:827)
+	at org.apache.rocketmq.broker.BrokerStartup.start(BrokerStartup.java:64)
+	at org.apache.rocketmq.broker.BrokerStartup.main(BrokerStartup.java:58)
+```
+
+
+
+### 8.7 `broker`配置文件
+
+#### 1）`master1`
+
+服务器：`192.168.2.12`
+
+```
+vim /usr/local/rocketmq/conf/2m-2s-sync/new-broker-a.properties
+```
+
+修改配置如下：
+
+```
+#所属集群名字
+brokerClusterName=rocketmq-cluster
+#broker名字，注意此处不同的配置文件填写的不一样
+brokerName=broker-a
+#0 表示 Master，>0 表示 Slave
+brokerId=0
+#nameServer地址，分号分割
+namesrvAddr=rocketmq-nameserver1:9876;rocketmq-nameserver2:9876
+#在发送消息时，自动创建服务器不存在的topic，默认创建的队列数
+defaultTopicQueueNums=4
+#是否允许 Broker 自动创建Topic，建议线下开启，线上关闭
+autoCreateTopicEnable=true
+#是否允许 Broker 自动创建订阅组，建议线下开启，线上关闭
+autoCreateSubscriptionGroup=true
+#Broker 对外服务的监听端口
+listenPort=10911
+#删除文件时间点，默认凌晨 4点
+deleteWhen=04
+#文件保留时间，默认 48 小时
+fileReservedTime=120
+#commitLog每个文件的大小默认1G
+mapedFileSizeCommitLog=1073741824
+#ConsumeQueue每个文件默认存30W条，根据业务情况调整
+mapedFileSizeConsumeQueue=300000
+#destroyMapedFileIntervalForcibly=120000
+#redeleteHangedFileInterval=120000
+#检测物理文件磁盘空间
+diskMaxUsedSpaceRatio=88
+#存储路径
+storePathRootDir=/usr/local/rocketmq/store
+#commitLog 存储路径
+storePathCommitLog=/usr/local/rocketmq/store/commitlog
+#消费队列存储路径存储路径
+storePathConsumeQueue=/usr/local/rocketmq/store/consumequeue
+#消息索引存储路径
+storePathIndex=/usr/local/rocketmq/store/index
+#checkpoint 文件存储路径
+storeCheckpoint=/usr/local/rocketmq/store/checkpoint
+#abort 文件存储路径
+abortFile=/usr/local/rocketmq/store/abort
+#限制的消息大小
+maxMessageSize=65536
+#flushCommitLogLeastPages=4
+#flushConsumeQueueLeastPages=2
+#flushCommitLogThoroughInterval=10000
+#flushConsumeQueueThoroughInterval=60000
+#Broker 的角色
+#- ASYNC_MASTER 异步复制Master
+#- SYNC_MASTER 同步双写Master
+#- SLAVE
+brokerRole=SYNC_MASTER
+#刷盘方式
+#- ASYNC_FLUSH 异步刷盘
+#- SYNC_FLUSH 同步刷盘
+flushDiskType=SYNC_FLUSH
+#checkTransactionMessageEnable=false
+#发消息线程池数量
+#sendMessageThreadPoolNums=128
+#拉消息线程池数量
+#pullMessageThreadPoolNums=128
+```
+
+#### 2）`slave2`
+
+服务器：`192.168.2.12`
+
+```
+vim /usr/local/rocketmq/conf/2m-2s-sync/new-broker-b-s.properties
+```
+
+修改配置如下：
+
+```
+#所属集群名字
+brokerClusterName=rocketmq-cluster
+#broker名字，注意此处不同的配置文件填写的不一样
+brokerName=broker-b
+#0 表示 Master，>0 表示 Slave
+brokerId=1
+#nameServer地址，分号分割
+namesrvAddr=rocketmq-nameserver1:9876;rocketmq-nameserver2:9876
+#在发送消息时，自动创建服务器不存在的topic，默认创建的队列数
+defaultTopicQueueNums=4
+#是否允许 Broker 自动创建Topic，建议线下开启，线上关闭
+autoCreateTopicEnable=true
+#是否允许 Broker 自动创建订阅组，建议线下开启，线上关闭
+autoCreateSubscriptionGroup=true
+#Broker 对外服务的监听端口
+listenPort=11011
+#删除文件时间点，默认凌晨 4点
+deleteWhen=04
+#文件保留时间，默认 48 小时
+fileReservedTime=120
+#commitLog每个文件的大小默认1G
+mapedFileSizeCommitLog=1073741824
+#ConsumeQueue每个文件默认存30W条，根据业务情况调整
+mapedFileSizeConsumeQueue=300000
+#destroyMapedFileIntervalForcibly=120000
+#redeleteHangedFileInterval=120000
+#检测物理文件磁盘空间
+diskMaxUsedSpaceRatio=88
+#存储路径
+storePathRootDir=/usr/local/rocketmq/store-s
+#commitLog 存储路径
+storePathCommitLog=/usr/local/rocketmq/store-s/commitlog
+#消费队列存储路径存储路径
+storePathConsumeQueue=/usr/local/rocketmq/store-s/consumequeue
+#消息索引存储路径
+storePathIndex=/usr/local/rocketmq/store-s/index
+#checkpoint 文件存储路径
+storeCheckpoint=/usr/local/rocketmq/store-s/checkpoint
+#abort 文件存储路径
+abortFile=/usr/local/rocketmq/store-s/abort
+#限制的消息大小
+maxMessageSize=65536
+#flushCommitLogLeastPages=4
+#flushConsumeQueueLeastPages=2
+#flushCommitLogThoroughInterval=10000
+#flushConsumeQueueThoroughInterval=60000
+#Broker 的角色
+#- ASYNC_MASTER 异步复制Master
+#- SYNC_MASTER 同步双写Master
+#- SLAVE
+brokerRole=SLAVE
+#刷盘方式
+#- ASYNC_FLUSH 异步刷盘
+#- SYNC_FLUSH 同步刷盘
+flushDiskType=ASYNC_FLUSH
+#checkTransactionMessageEnable=false
+#发消息线程池数量
+#sendMessageThreadPoolNums=128
+#拉消息线程池数量
+#pullMessageThreadPoolNums=128
+```
+
+#### 3）`master2`
+
+服务器：`192.168.2.13`
+
+```
+vim /usr/local/rocketmq/conf/2m-2s-sync/new-broker-b.properties
+```
+
+修改配置如下：
+
+```
+#所属集群名字
+brokerClusterName=rocketmq-cluster
+#broker名字，注意此处不同的配置文件填写的不一样
+brokerName=broker-b
+#0 表示 Master，>0 表示 Slave
+brokerId=0
+#nameServer地址，分号分割
+namesrvAddr=rocketmq-nameserver1:9876;rocketmq-nameserver2:9876
+#在发送消息时，自动创建服务器不存在的topic，默认创建的队列数
+defaultTopicQueueNums=4
+#是否允许 Broker 自动创建Topic，建议线下开启，线上关闭
+autoCreateTopicEnable=true
+#是否允许 Broker 自动创建订阅组，建议线下开启，线上关闭
+autoCreateSubscriptionGroup=true
+#Broker 对外服务的监听端口
+listenPort=10911
+#删除文件时间点，默认凌晨 4点
+deleteWhen=04
+#文件保留时间，默认 48 小时
+fileReservedTime=120
+#commitLog每个文件的大小默认1G
+mapedFileSizeCommitLog=1073741824
+#ConsumeQueue每个文件默认存30W条，根据业务情况调整
+mapedFileSizeConsumeQueue=300000
+#destroyMapedFileIntervalForcibly=120000
+#redeleteHangedFileInterval=120000
+#检测物理文件磁盘空间
+diskMaxUsedSpaceRatio=88
+#存储路径
+storePathRootDir=/usr/local/rocketmq/store
+#commitLog 存储路径
+storePathCommitLog=/usr/local/rocketmq/store/commitlog
+#消费队列存储路径存储路径
+storePathConsumeQueue=/usr/local/rocketmq/store/consumequeue
+#消息索引存储路径
+storePathIndex=/usr/local/rocketmq/store/index
+#checkpoint 文件存储路径
+storeCheckpoint=/usr/local/rocketmq/store/checkpoint
+#abort 文件存储路径
+abortFile=/usr/local/rocketmq/store/abort
+#限制的消息大小
+maxMessageSize=65536
+#flushCommitLogLeastPages=4
+#flushConsumeQueueLeastPages=2
+#flushCommitLogThoroughInterval=10000
+#flushConsumeQueueThoroughInterval=60000
+#Broker 的角色
+#- ASYNC_MASTER 异步复制Master
+#- SYNC_MASTER 同步双写Master
+#- SLAVE
+brokerRole=SYNC_MASTER
+#刷盘方式
+#- ASYNC_FLUSH 异步刷盘
+#- SYNC_FLUSH 同步刷盘
+flushDiskType=SYNC_FLUSH
+#checkTransactionMessageEnable=false
+#发消息线程池数量
+#sendMessageThreadPoolNums=128
+#拉消息线程池数量
+#pullMessageThreadPoolNums=128
+```
+
+#### 4）`slave1`
+
+服务器：`192.168.2.13`
+
+```
+vim /usr/local/rocketmq/conf/2m-2s-sync/new-broker-a-s.properties
+```
+
+修改配置如下：
+
+```
+#所属集群名字
+brokerClusterName=rocketmq-cluster
+#broker名字，注意此处不同的配置文件填写的不一样
+brokerName=broker-a
+#0 表示 Master，>0 表示 Slave
+brokerId=1
+#nameServer地址，分号分割
+namesrvAddr=rocketmq-nameserver1:9876;rocketmq-nameserver2:9876
+#在发送消息时，自动创建服务器不存在的topic，默认创建的队列数
+defaultTopicQueueNums=4
+#是否允许 Broker 自动创建Topic，建议线下开启，线上关闭
+autoCreateTopicEnable=true
+#是否允许 Broker 自动创建订阅组，建议线下开启，线上关闭
+autoCreateSubscriptionGroup=true
+#Broker 对外服务的监听端口
+listenPort=11011
+#删除文件时间点，默认凌晨 4点
+deleteWhen=04
+#文件保留时间，默认 48 小时
+fileReservedTime=120
+#commitLog每个文件的大小默认1G
+mapedFileSizeCommitLog=1073741824
+#ConsumeQueue每个文件默认存30W条，根据业务情况调整
+mapedFileSizeConsumeQueue=300000
+#destroyMapedFileIntervalForcibly=120000
+#redeleteHangedFileInterval=120000
+#检测物理文件磁盘空间
+diskMaxUsedSpaceRatio=88
+#存储路径
+storePathRootDir=/usr/local/rocketmq/store-s
+#commitLog 存储路径
+storePathCommitLog=/usr/local/rocketmq/store-s/commitlog
+#消费队列存储路径存储路径
+storePathConsumeQueue=/usr/local/rocketmq/store-s/consumequeue
+#消息索引存储路径
+storePathIndex=/usr/local/rocketmq/store-s/index
+#checkpoint 文件存储路径
+storeCheckpoint=/usr/local/rocketmq/store-s/checkpoint
+#abort 文件存储路径
+abortFile=/usr/local/rocketmq/store-s/abort
+#限制的消息大小
+maxMessageSize=65536
+#flushCommitLogLeastPages=4
+#flushConsumeQueueLeastPages=2
+#flushCommitLogThoroughInterval=10000
+#flushConsumeQueueThoroughInterval=60000
+#Broker 的角色
+#- ASYNC_MASTER 异步复制Master
+#- SYNC_MASTER 同步双写Master
+#- SLAVE
+brokerRole=SLAVE
+#刷盘方式
+#- ASYNC_FLUSH 异步刷盘
+#- SYNC_FLUSH 同步刷盘
+flushDiskType=ASYNC_FLUSH
+#checkTransactionMessageEnable=false
+#发消息线程池数量
+#sendMessageThreadPoolNums=128
+#拉消息线程池数量
+#pullMessageThreadPoolNums=128
+```
+
+### 8.8 修改启动脚本文件
+
+#### 1）`runbroker.sh`
+
+```sh
+vi /usr/local/rocketmq/bin/runbroker.sh
+```
+
+需要根据内存大小进行适当的对JVM参数进行调整：
+
+```bash
+#===================================================
+# 开发环境配置 JVM Configuration
+JAVA_OPT="${JAVA_OPT} -server -Xms256m -Xmx256m -Xmn128m"
+```
+
+#### 2）`runserver.sh`
+
+```shell
+vim /usr/local/rocketmq/bin/runserver.sh
+JAVA_OPT="${JAVA_OPT} -server -Xms256m -Xmx256m -Xmn128m -XX:MetaspaceSize=128m -XX:MaxMetaspaceSize=320m"
+```
+
+### 8.9 服务启动
+
+#### 1）启动`NameServer`集群
+
+分别在`192.168.2.12`和`192.168.2.13`启动`NameServer`
+
+```bash
+cd /usr/local/rocketmq/bin
+nohup sh mqnamesrv &
+```
+
+#### 2）启动`Broker`集群
+
+- 在`192.168.2.12`上启动`master1`和`slave2`
+
+`master1`：
+
+```shell
+cd /usr/local/rocketmq/bin
+nohup sh mqbroker -c /usr/local/rocketmq/conf/2m-2s-sync/new-broker-a.properties &
+```
+
+`slave2`：
+
+```shell
+cd /usr/local/rocketmq/bin
+nohup sh mqbroker -c /usr/local/rocketmq/conf/2m-2s-sync/new-broker-b-s.properties &
+```
+
+- 在`192.168.2.13`上启动`master2`和`slave2`
+
+`master2`
+
+```shell
+cd /usr/local/rocketmq/bin
+nohup sh mqbroker -c /usr/local/rocketmq/conf/2m-2s-sync/new-broker-b.properties &
+```
+`slave1`
+
+```shell
+cd /usr/local/rocketmq/bin
+nohup sh mqbroker -c /usr/local/rocketmq/conf/2m-2s-sync/new-broker-a-s.properties &
+```
+
+### 8.10 查看进程状态
+
+启动后通过`JPS`查看启动进程
+
+### 8.11 查看日志
+
+```shell
+# 查看nameServer日志
+tail -500f ~/logs/rocketmqlogs/namesrv.log
+# 查看broker日志
+tail -500f ~/logs/rocketmqlogs/broker.log
+```
+
+
+
+## 九、RocketMQ集群监控平台搭建
+
+### 9.1 概述
+
+`RocketMQ`有一个对其扩展的开源项目[incubator-rocketmq-externals](https://github.com/apache/rocketmq-externals)，这个项目中有一个子模块叫`rocketmq-console`，这个便是管理控制台项目了，先将[incubator-rocketmq-externals](https://github.com/apache/rocketmq-externals)拉到本地，因为我们需要自己对`rocketmq-console`进行编译打包运行。
+
+### 9.2 下载并编译打包
+
+```shell
+git clone https://github.com/apache/rocketmq-externals
+cd rocketmq-console
+mvn clean package -Dmaven.test.skip=true
+```
+
+> 注意：打包前在`rocketmq-console`中配置`namesrv`集群地址：src/ application.properties
+
+```
+# 这里注意修改
+rocketmq.config.namesrvAddr=192.168.2.12:9876;192.168.2.13:9876
+```
+
+启动`rocketmq-console`：
+
+```shell
+java -jar rocketmq-console-ng-1.0.0.jar
+```
+
+启动成功后，我们就可以通过浏览器访问`http://x.x.x.x:8080`进入控制台界面了，如下图：
+
+![img](./img/1580998-20200609193702477-1571247230.png)
