@@ -1,5 +1,13 @@
 # RocketMQ
 
+存在疑问：
+
+1. RocketMQ生产者组topic和消费组的关系
+
+
+
+
+
 ## 一、 简介
 
 RocketMQ一个纯java、分布式、队列模型的开源消息中间件，前身是MetaQ，是阿里研发的一个队列模型的消息中间件，后开源给apache基金会成为了apache的顶级开源项目，具有高性能、高可靠、高实时、分布式特点。
@@ -759,3 +767,443 @@ java -jar rocketmq-console-ng-1.0.0.jar
 启动成功后，我们就可以通过浏览器访问`http://x.x.x.x:8080`进入控制台界面了，如下图：
 
 ![img](./img/1580998-20200609193702477-1571247230.png)
+
+
+
+## 十、消息发送样例
+
+- 导入 MQ 客户端依赖
+
+  ```xml
+  <dependency>
+       <groupId>org.apache.rocketmq</groupId>
+       <artifactId>rocketmq-client</artifactId>
+       <version>4.4.0</version>
+  </dependency>
+  ```
+
+- 消息生产者步骤分析
+
+  1. 创建消息生产者producer，并制定生产者组名
+  2. 制定NameServer地址
+  3. 启动producer
+  4. 创建消息对象，制定主题Topic、tag和消息体
+  5. 发送消息
+  6. 关闭生产者producer
+
+- 消息消费者步骤分析
+
+  1. 创建消费者consumer，制定消费者组名
+  2. 指定Nameserver地址
+  3. 订阅主题Topic和tag
+  4. 设置回调函数、处理消息
+  5. 启动消费者consumer
+
+### 10.1 基本样例
+
+#### 1）发送同步消息
+
+> 阻塞代码：可靠性高的同步地发送方式使用的比较广泛，比如：重要的消息通知、短信通知
+
+```java
+import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.common.message.Message;
+ 
+import java.util.concurrent.TimeUnit;
+ 
+public class SyncProducer {
+ 
+    public static void main(String[] args) throws Exception {
+        // 1.创建消息生产者producer，并制定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+        // 2.指定NameServer地址,多个地址用 ; 隔开
+        producer.setNamesrvAddr("localhost:9876");
+        // 3.启动producer
+        producer.start();
+ 
+        for (int i = 0; i < 10; i++) {
+            // 4.创建消息对象，指定主题Topic、Tag和消息体
+            /*
+            参数1：消息主题Topic
+            参数2：消息Tag
+            参数3：消息内容
+             */
+            Message msg = new Message("base","tag1",("hello world"+i).getBytes());
+            // 5.发送消息结果包含  发送状态  消息id 消息接收队列id等
+            SendResult result = producer.send(msg);
+            System.out.println("发送结果"+result);
+ 
+            // 线程睡眠1秒
+            TimeUnit.SECONDS.sleep(1);
+        }
+        // 6关闭生产者producer
+        producer.shutdown();
+    }
+}
+```
+
+#### 2）发送异步消息
+
+> 不阻塞代码：通常对响应时间敏感的业务场景，即发送不能容忍长时间地等待broker的响应
+
+```java
+import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.client.producer.SendCallback;
+import org.apache.rocketmq.client.producer.SendResult;
+import org.apache.rocketmq.common.message.Message;
+ 
+import java.util.concurrent.TimeUnit;
+ 
+public class AsyncProducer {
+ 
+    public static void main(String[] args) throws Exception {
+        // 1.创建消息生产者producer，并制定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+        // 2.指定NameServer地址
+        producer.setNamesrvAddr("localhost:9876");
+        // 3.启动producer
+        producer.start();
+ 
+        for (int i = 0; i < 10; i++) {
+            // 4.创建消息对象，指定主题Topic、Tag和消息体
+            /*
+            参数1：消息主题Topic
+            参数2：消息Tag
+            参数3：消息内容
+             */
+            Message msg = new Message("base","tag2",("hello world"+i).getBytes());
+            // 5.发送消息结果包含  发送状态  消息id 消息接收队列id等
+            producer.send(msg, new SendCallback() {
+                // 发送成功回调函数
+                public void onSuccess(SendResult sendResult) {
+                    System.out.println("发送结果："+sendResult);
+                }
+                // 发送失败回调函数
+                public void onException(Throwable e) {
+                    System.out.println("发送异常"+e);
+                }
+            });
+ 
+            // 线程睡眠1秒
+            TimeUnit.SECONDS.sleep(1);
+        }
+        // 6关闭生产者producer
+        producer.shutdown();
+        System.out.println("发送完成");
+    }
+}
+```
+
+#### 3）发送单向消息
+
+> 这种方式主要用于不特别关心发送结果的场景，例如日志发送
+
+```java
+import org.apache.rocketmq.client.exception.MQBrokerException;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.client.producer.DefaultMQProducer;
+import org.apache.rocketmq.common.message.Message;
+import org.apache.rocketmq.remoting.exception.RemotingException;
+ 
+import java.util.concurrent.TimeUnit;
+ 
+public class OnewayProducer {
+ 
+    public static void main(String[] args) throws Exception {
+        // 1.创建消息生产者producer，并制定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+        // 2.指定NameServer地址
+        producer.setNamesrvAddr("localhost:9876");
+        // 3.启动producer
+        producer.start();
+ 
+        for (int i = 0; i < 10; i++) {
+            // 4.创建消息对象，指定主题Topic、Tag和消息体
+            /*
+            参数1：消息主题Topic
+            参数2：消息Tag
+            参数3：消息内容
+             */
+            Message msg = new Message("base","tag3",("hello world,单向消息"+i).getBytes());
+            // 5.发送单向消息
+            producer.sendOneway(msg);
+            System.out.println("发送单向消息");
+ 
+            // 线程睡眠1秒
+            TimeUnit.SECONDS.sleep(1);
+        }
+        // 6关闭生产者producer
+        producer.shutdown();
+    }
+}
+```
+
+
+
+#### 4) 消费消息（负载均衡模式）
+
+> 消费者采用负载均衡模式消费消息，多个消费者共同消费队列消息，每个消费者处理消息不同
+
+```java
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyContext;
+import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
+import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
+ 
+import java.util.List;
+ 
+public class Consumer {
+ 
+    public static void main(String[] args) throws Exception {
+        // 1.创建消费者Consumer，制定消费者组名
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("group1");
+        // 2.指定Nameserver地址
+        consumer.setNamesrvAddr("localhost:9876");
+        // 3.订阅主题Topic和Tag
+        consumer.subscribe("base","tag1");
+        // 消费模式：默认是负载均衡模式
+        consumer.setMessageModel(MessageModel.CLUSTERING);
+        // 4.设置回调函数，处理消息
+        consumer.registerMessageListener(new MessageListenerConcurrently() {
+            //接收消息内容
+            public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> list, ConsumeConcurrentlyContext consumeConcurrentlyContext) {
+                for (MessageExt messageExt : list) {
+                    System.out.println(new String(messageExt.getBody()));
+                }
+                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+            }
+        });
+        // 5.启动消费者consumer
+        consumer.start();
+    }
+}
+```
+
+#### 5）消费消息（广播模式）
+
+> 消费者采用广播模式消费消息，每个消费者消费的消息都是相同的
+
+```java
+import org.apache.rocketmq.client.consumer.DefaultMQPushConsumer;
+import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyContext;
+import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
+import org.apache.rocketmq.client.consumer.listener.MessageListenerConcurrently;
+import org.apache.rocketmq.client.exception.MQClientException;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
+ 
+import java.util.List;
+ 
+public class Consumer {
+ 
+    public static void main(String[] args) throws MQClientException {
+        // 1.创建消费者Consumer，制定消费者组名
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("group1");
+        // 2.指定Nameserver地址
+        consumer.setNamesrvAddr("localhost:9876");
+        // 3.订阅主题Topic和Tag
+        consumer.subscribe("base","tag1");
+        // 消费模式：广播模式
+        consumer.setMessageModel(MessageModel.BROADCASTING);
+        // 4.设置回调函数，处理消息（并发）
+        consumer.registerMessageListener(new MessageListenerConcurrently() {
+            //接收消息内容
+            public ConsumeConcurrentlyStatus consumeMessage(List<MessageExt> list, ConsumeConcurrentlyContext consumeConcurrentlyContext) {
+                for (MessageExt messageExt : list) {
+                    System.out.println(new String(messageExt.getBody()));
+                }
+                return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+            }
+        });
+        // 5.启动消费者consumer
+        consumer.start();
+    }
+}
+```
+
+### 10.2 顺序消息
+
+消息有序指的是可以按照消息的发送顺序来消费。rockermq可以严格的保证消息有序，可以分为**分区有序**或者**全部有序**。
+
+顺序消费的原理解析，在默认的情况下消息发送会采取round robin轮询方式把消息发送到不同的queue（分区队列）； 而消费消息的时候从多个queue上拉取消息，这种情况发送和消费是不能保证顺序。
+
+但是如果控制发送的顺序消息依次发送到同一个queue中，消费的时候只从这个queue上一次拉取，则就保证了顺序。
+
+当发送和消费参与的queue只有一个，则是全局有序； 如果多个queue参与，则为分区有序，即相对每个queue，消息都是有序的。
+
+下面用订单进行分区有序的示例，一个订单的顺序流程：创建、付款、推送、完成。订单号相同的消息会被先后发送到同一个队列中， 消费时，同一个orderid获取到的肯定是同一个队列
+
+模拟订单数据：
+
+```java
+public class OrderStep {
+ 
+    private long orderId;
+ 
+    private String desc;
+ 
+    public String getDesc() {
+        return desc;
+    }
+ 
+    public void setDesc(String desc) {
+        this.desc = desc;
+    }
+ 
+    public long getOrderId() {
+        return orderId;
+    }
+ 
+    public void setOrderId(long orderId) {
+        this.orderId = orderId;
+    }
+ 
+    @Override
+    public String toString() {
+        return "OrderStep{" +
+                "orderId=" + orderId +
+                ", desc='" + desc + '\'' +
+                '}';
+    }
+ 
+    public static List<OrderStep> buildOrders() {
+         // 1039L  创建  付款 推送 完成
+         // 1065L 创建  付款
+         // 7235L 创建  付款
+        List<OrderStep> orderList = new ArrayList<OrderStep>();
+        OrderStep demo = new OrderStep();
+        demo = new OrderStep();
+        demo.setOrderId(1039L);
+        demo.setDesc("创建");
+        orderList.add(demo);
+ 
+        demo = new OrderStep();
+        demo.setOrderId(1039L);
+        demo.setDesc("付款");
+        orderList.add(demo);
+ 
+        demo.setOrderId(1039L);
+        demo.setDesc("推送");
+        orderList.add(demo);
+ 
+        demo = new OrderStep();
+        demo.setOrderId(1039L);
+        demo.setDesc("完成");
+        orderList.add(demo);
+ 
+        demo = new OrderStep();
+        demo.setOrderId(1065L);
+        demo.setDesc("推送");
+        orderList.add(demo);
+ 
+        demo = new OrderStep();
+        demo.setOrderId(1065L);
+        demo.setDesc("完成");
+        orderList.add(demo);
+ 
+        demo = new OrderStep();
+        demo.setOrderId(7235L);
+        demo.setDesc("创建");
+        orderList.add(demo);
+ 
+        demo = new OrderStep();
+        demo.setOrderId(7235L);
+        demo.setDesc("付款");
+        orderList.add(demo);
+ 
+        demo = new OrderStep();
+        demo.setOrderId(7235L);
+        demo.setDesc("推送");
+        orderList.add(demo);
+ 
+        demo = new OrderStep();
+        demo.setOrderId(7235L);
+        demo.setDesc("完成");
+        orderList.add(demo);
+ 
+        return orderList;
+    }
+}
+```
+
+#### 1) 生产者
+
+```java
+public class Producer {
+ 
+    public static void main(String[] args) throws Exception {
+ 
+        // 1.创建消息生产者producer，并制定生产者组名
+        DefaultMQProducer producer = new DefaultMQProducer("group1");
+        // 2.指定NameServer地址
+        producer.setNamesrvAddr("localhost:9876");
+        // 3.启动producer
+        producer.start();
+        // 构建消息集合
+        List<OrderStep> orderStepList = OrderStep.buildOrders();
+        // 发送消息
+        for (int i = 0; i < orderStepList.size(); i++) {
+            String body = orderStepList.get(i)+"";
+            Message message = new Message("OrderTopic","Order","i"+i,body.getBytes());
+            /**
+             * 参数1：消息对象
+             * 参数2：消息队列的选择器
+             * 参数3：选择队列的业务标识（订单id）
+             */
+            SendResult send = producer.send(message, new MessageQueueSelector() {
+                /**
+                 *
+                 * @param list 队列集合
+                 * @param message 消息对象
+                 * @param o 业务标识的参数
+                 * @return
+                 */
+                public MessageQueue select(List<MessageQueue> list, Message message, Object o) {
+                    long orderId = (Long) o;
+                    long index = orderId % list.size();
+                    return list.get((int) index);
+                }
+            }, orderStepList.get(i).getOrderId());
+            System.out.println("发送结果："+send);
+        }
+        producer.shutdown();
+    }
+}
+```
+
+#### 2) 消费者
+
+```java
+public class Consumer {
+ 
+    public static void main(String[] args) throws MQClientException {
+        // 1.创建消费者Consumer，制定消费者组名
+        DefaultMQPushConsumer consumer = new DefaultMQPushConsumer("group1");
+        // 2.指定Nameserver地址
+        consumer.setNamesrvAddr("localhost:9876");
+        // 3.订阅主题Topic和Tag
+        consumer.subscribe("OrderTopic","*");
+        // 4.注册消息监听器(单线程)
+        consumer.registerMessageListener(new MessageListenerOrderly() {
+            public ConsumeOrderlyStatus consumeMessage(List<MessageExt> list, ConsumeOrderlyContext consumeOrderlyContext) {
+                for (MessageExt messageExt : list) {
+                    System.out.println("线程名称:["+Thread.currentThread().getName()+"]消费消息："+new String(messageExt.getBody()));
+                }
+                return ConsumeOrderlyStatus.SUCCESS;
+            }
+        });
+        // 5.启动消费者
+        consumer.start();
+        System.out.println("消费者启动");
+    }
+}
+```
+
+
+
+
+
