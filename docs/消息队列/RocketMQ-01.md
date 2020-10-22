@@ -9,11 +9,11 @@
 
 
 
-## 一、 简介
+## 1. 简介
 
 RocketMQ一个纯java、分布式、队列模型的开源消息中间件，前身是MetaQ，是阿里研发的一个队列模型的消息中间件，后开源给apache基金会成为了apache的顶级开源项目，具有高性能、高可靠、高实时、分布式特点。
 
-## 二、RocketMQ 专业术语
+## 2. RocketMQ 专业术语
 
 先讲专业术语的含义，后面会画流程图来更好的去理解它们。
 
@@ -64,7 +64,7 @@ RocketMQ一个纯java、分布式、队列模型的开源消息中间件，前�
   - `Producer/Consumer` ：通过查询接口获取Topic对应的Broker的地址信息
   - `Broker` ： 注册配置信息到NameServer， 实时更新Topic信息到NameServer
 
-## 三、流程图
+## 3. 流程图
 
 我们由简单到复杂的来理解，它的一些核心概念
 
@@ -133,7 +133,7 @@ Topic是一个逻辑上的概念，实际上Message是在每个Broker上以Queue
 
 
 
-## 四、详解Broker
+## 4. 详解Broker
 
 - **Broker与Name Server关系**
 
@@ -165,7 +165,7 @@ Topic是一个逻辑上的概念，实际上Message是在每个Broker上以Queue
   `思考2` master恢复恢复后，消息能否恢复。
   消费者得到Master宕机通知后，转向Slave消费，但是Slave不能保证Master的消息100%都同步过来了，因此会有少量的消息丢失。但是消息最终不会丢的，一旦Master恢复，未同步过去的消息会被消费掉。
 
-## 五、Consumer (消费者)
+## 5. Consumer (消费者)
 
 - Consumer与Name Server关系
   - **连接** : 单个Consumer和一台NameServer保持长连接，如果该NameServer挂掉，消费者会自动连接下一个NameServer，直到有可用连接为止，并能自动重连。
@@ -179,7 +179,7 @@ Topic是一个逻辑上的概念，实际上Message是在每个Broker上以Queue
 
   集群消费模式下，一个消费者集群多台机器共同消费一个Topic的多个队列，一个队列只会被一个消费者消费。如果某个消费者挂掉，分组内其它消费者会接替挂掉的消费者继续消费。
 
-## 六、Producer(生产者)
+## 6. Producer(生产者)
 
 - Producer与Name Server关系
   - **连接** 单个Producer和一台NameServer保持长连接，如果该NameServer挂掉，生产者会自动连接下一个NameServer，直到有可用连接为止，并能自动重连。
@@ -193,7 +193,7 @@ Topic是一个逻辑上的概念，实际上Message是在每个Broker上以Queue
 
 
 
-## 七、集群部署方式
+## 7. 集群部署方式
 
 ### 7.1 单 Master 模式
 
@@ -229,7 +229,7 @@ Topic是一个逻辑上的概念，实际上Message是在每个Broker上以Queue
 - 缺点：发送单个消息 RT 会略长，性能相比异步复制低10%左右。发送单个消息的`RT`会略高，且目前版本在主节点宕机后，备机不能自动切换为主机。
 
 
-## 八、双主双从集群搭建
+## 8. 双主双从集群搭建
 
 ### 8.1 总体架构
 
@@ -738,7 +738,7 @@ tail -500f ~/logs/rocketmqlogs/broker.log
 
 
 
-## 九、RocketMQ集群监控平台搭建
+## 9. RocketMQ集群监控平台搭建
 
 ### 9.1 概述
 
@@ -771,7 +771,7 @@ java -jar rocketmq-console-ng-1.0.0.jar
 
 
 
-## 十、消息类型
+## 10. 消息类型
 
 ### 10.1 普通消息
 
@@ -1283,7 +1283,7 @@ MQ组件是系统架构里必不可少的一门利器，设计层面可以降低
 
 
 
-## 十一、消息发送方式
+## 11. 消息发送方式
 
 #### 1）同步发送
 
@@ -1455,7 +1455,7 @@ public class OnewayProducer {
 
 
 
-## 十二、消费模式
+## 12. 消费模式
 
 ### 11.1 集群消费（负载均衡模式）
 
@@ -1571,7 +1571,7 @@ public class Consumer {
 
 
 
-## 十三、高级特性
+## 13. 高级特性
 
 ### 13.1 消息过滤
 
