@@ -27,5 +27,10 @@ module.exports = {
             {text: '博客', link: 'https://www.jianshu.com/u/af08f637aff8'}
         ],
         sidebarDepth: 5
-    }
+    },
+	markdown: {
+		extendMarkdown: md => {
+		  md.use(require("markdown-it-disable-url-encode"))
+		}
+	}
 }

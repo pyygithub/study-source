@@ -4,27 +4,15 @@
 
 ### 1.1 简介
 
-官网：http://kafka.apache.org/
+Kafka 最初是有 Linkedin 公司采用 scala 语音开发的一个多分区、多副本并且基于 Zookeeper 协调的分布式消息系统，现在已经捐献给了 Apache 基金会。目前 Kafka 已经定位为一个分布式流式处理平台，它以高吞吐、可持久化、可水平扩展、支持流处理等多种特性而被广泛应用。
 
-![](./img/kafka_logo.png)
+Apache Kafka 是一个分布式的 **发布** - **订阅** 消息系统，能够支撑海量数据的数据传递。在离线和实时的消息处理业务系统中，Kafka 都有广泛的应用。Kafka 将消息持久化到磁盘中，并对消息创建了备份保证了数据的安全。Kafka 在保证了较高的处理速度的同时，又能保证数据处理的低延迟和数据的零丢失。
 
-Apache Kafka 是一个分布式的流数据平台，三层含义：
-
-- 消息系统（MQ）：发布和订阅流数据。
-- 流数据处理（Streaming）：可以基于Kafka开发流数据处理的应用，用以实时处理流数据。
-- 流数据存储（Store）：以一种安全分布式、冗余、容错的方式，存放数据。
-
-Apache Kafka 典型的应用场景：
-
-- 构建实时的流数据管道，用以在应用和应用之间进行可靠的数据传输
-- 构建实时的流数据处理应用，用以传输或者处理流数据
-- 作为流数据处理框架（Storm、Spark、Flink等）的数据源
-
-
+![img](./img/1158242-20180329213149483-720708194.png)
 
 ### 1.2 Kafka的特性
 
-- 高吞吐量、低延迟：kafka每秒可以处理几十万条消息，它的延迟最低只有几毫秒，每个topic可以分多个partition, consumer group 对partition进行consume操作。
+- 高吞吐量、低延迟：kafka每秒可以处理几十万条消息，它的延迟最低只有几毫秒，每个topic可以分多个partition 分区, 消费组对partition进行消费操作。
 - 可扩展性：kafka集群支持热扩展，无需停机。
 - 持久性、可靠性：消息被持久化到本地磁盘，并且支持数据备份防止数据丢失。通过O(1)的磁盘数据结构提供消息的持久化，这种结构对于即使数以TB的消息存储也能够保持长时间的稳定性能。
 - 容错性：允许集群中节点失败（若副本数量为n,则允许n-1个节点失败）。
@@ -34,7 +22,7 @@ Apache Kafka 典型的应用场景：
 
 - 日志收集：一个公司可以用Kafka可以收集各种服务的log，通过kafka以统一接口服务的方式开放给各种consumer，例如hadoop、Hbase、Solr等。
 - 消息系统：解耦和生产者和消费者、缓存消息等。
-- 用户活动跟踪：Kafka经常被用来记录web用户或者app用户的各种活动，如浏览网页、搜索、点击等活动，这些活动信息被各个服务器发布到kafka的topic中，然后订阅者通过订阅这些topic来做实时的监控分析，或者装载到hadoop、数据仓库中做离线分析和挖掘。
+- 用户活动跟踪：Kafka经常被用来记录web用户或者app用户的各种活动，如浏览网页、搜索、点击等活动，这些活动信息被各个服务器发布到kafka的topic中，然后订阅者通过订阅这些topic来做实时的监控分析，或者装载到 hadoop、数据仓库中做离线分析和挖掘。
 - 运营指标：Kafka也经常用来记录运营监控数据。包括收集各种分布式应用的数据，生产各种操作的集中反馈，比如报警和报告。
 - 流式处理：流行的框架(如Storm和Spark Streaming)从主题中读取数据，对其进行处理，并将处理后的数据写入新主题，供用户和应用程序使用。 Kafka的强耐久性在流处理的上下文中也非常有用。
 
@@ -46,19 +34,31 @@ Kafka架构是一种生产者生产消息、kafka集群、消费者获取消息�
 
 ![](./img/cluster_architecture.jpg)
 
-工作图:
+![img](./img/1228818-20180507190731172-1317551019.png)
 
-![](./img/kafka_work.png)
+上图中一个topic配置了3个partition。Partition1有两个offset：0和1。Partition2有4个offset。Partition3有1个offset。副本的id和副本所在的机器的id恰好相同。
+
+如果一个topic的副本数为3，那么Kafka将在集群中为每个partition创建3个相同的副本。集群中的每个broker存储一个或多个partition。多个producer和consumer可同时生产和消费数据。
 
 - Kafka Cluster（Kafka集群）
 
   Kafka有多个代理服务器broker被称为Kafka集群。可以扩展Kafka集群，无需停机。 这些集群用于管理消息数据的持久性和复制。
 
+- borker
+
+  Kafka 集群包含一个或多个服务器，服务器节点称为broker。
+
+  broker存储topic的数据。如果某topic有N个partition，集群有N个broker，那么每个broker存储该topic的一个partition。
+
+  如果某topic有N个partition，集群有(N+M)个broker，那么其中有N个broker存储该topic的一个partition，剩下的M个broker不存储该topic的partition数据。
+
+  如果某topic有N个partition，集群中broker数目少于N个，那么一个broker存储该topic的一个或多个partition。在实际生产环境中，尽量避免这种情况的发生，这种情况容易导致Kafka集群数据不均衡。
+
 - Topic
 
   一个topic为一类消息，每条消息必须指定一个topic。物理上，一个topic分成一个或多个partition，每个partition有多个副本分布在不同的broker中。
 
-  一个主题类似新闻中的体育、娱乐、教育等分类概念，在实际工程中通常一个业务一个主题。
+  主题类似新闻中的体育、娱乐、教育等分类概念，在实际工程中通常一个业务一个主题。
 
   Topic分配partition和partition replica的算法：
 
@@ -74,7 +74,7 @@ Kafka架构是一种生产者生产消息、kafka集群、消费者获取消息�
 
   kafka分区是提高kafka性能的关键所在，当你发现你的集群性能不高时，常用手段就是增加Topic的分区，分区里面的消息是按照从新到老的顺序进行组织，消费者从队列头订阅消息，生产者从队列尾添加消息。
 
-  kafka集群中的消息，是通过Topic（主题）来进行组织的，每个partition在存储层面是一个append log文件，发布到此partition的消息会追加到log文件的尾部，为顺序写人磁盘（顺序写磁盘比随机写内存的效率还要高）。每条消息在log文件中的位置成为offset（偏移量），offset为一个long型数字，唯一标记一条消息。
+  kafka集群中的消息，是通过Topic（主题）来进行组织的，每个partition在存储层面是一个append log文件，发布到此partition的消息会追加到log文件的尾部，按顺序写人磁盘（顺序写磁盘比随机写内存的效率还要高）。每条消息在log文件中的位置称为offset（偏移量），offset为一个long型数字，唯一标记一条消息。
 
   Kafka集群使用可配置的保留期限持久保留所有已发布的记录（无论是否已使用它们）。例如，如果将保留策略设置为两天，则在发布记录后的两天内，该记录可供使用，之后将被丢弃以释放空间。Kafka的性能相对于数据大小实际上是恒定的，因此长时间存储数据不是问题。
 
@@ -86,29 +86,35 @@ Kafka架构是一种生产者生产消息、kafka集群、消费者获取消息�
 
   Kafka的消费者消费消息时，只保证在一个分区内的消息的完全有序性，并不保证同一个主题汇中多个分区的消息顺序。而且，消费者读取一个分区消息的顺序和生产者写入到这个分区的顺序是一致的。比如，生产者写入“hello”和“Kafka”两条消息到分区P1，则消费者读取到的顺序也一定是“hello”和“Kafka”。如果业务上需要保证所有消息完全一致，只能通过设置一个分区完成，但这种做法的缺点是最多只能有一个消费者进行消费。一般来说，只需要保证每个分区的有序性，再对消息假设键来保证相同键的所有消息落入同一分区，就可以满足绝大多数的应用。
 
-- 备份（Replication）
+- Replicas  of partition
 
-  为了保证分布式可靠性，kafka0.8开始对每个分区的数据进行备份（不同的Broker上），防止其中一个Broker宕机造成分区上的数据不可用。副本从不读取或写入数据。 它们用于防止数据丢失，是对主分区数据的冗余备份，起到容错作用。
+  副本是一个分区的备份。副本不会被消费者消费，副本只用于防止数据丢失，即消费者不从follower
 
-- Broker（代理/经纪人）
+  的partition中消费数据，而是从为leader的partition中读取数据。副本之间是一主多从的关系。
+
+- Broker
 
   Kafka服务实例，每一个Broker都有一个唯一标识。
 
   Kafka集群通常由多个代理组成以保持负载平衡。 Kafka代理是无状态的，所以他们使用ZooKeeper来维护它们的集群状态。 一个Kafka代理实例可以每秒处理数十万次读取和写入，每个Broker可以处理TB的消息，而没有性能影响。 Kafka经纪人领导选举可以由ZooKeeper完成。
 
-- Leader（领导者）
+- Leader
 
   Leader 是负责给定分区的所有读取和写入的节点。每个分区都有一个服务器充当Leader。
 
   kafka会为partition选出一个leader，之后所有该partition的请求，实际操作的都是leader，然后再同步到其他的follower。当一个broker歇菜后，所有leader在该broker上的partition都会重新选举，选出一个leader。
 
-- Follower（追随者）
+- Follower
 
   跟随领导者指令的节点被称为Follower。 如果领导失败，一个追随者将自动成为新的领导者。 跟随者作为正常消费者，拉取消息并更新其自己的数据存储。
 
 - Producers（生产者）
 
-  生产者是发送给broker一个或多个Kafka主题的消息的发布者。 每当生产者将消息发布给代理时，代理只需将消息附加到最后一个段文件。 实际上，该消息将被附加到分区。 生产者还可以向他们选择的分区发送消息。当新代理启动时，所有生产者搜索它并自动向该新代理发送消息。 Kafka生产者不等待来自代理的确认，并且发送消息的速度与代理可以处理的一样快。
+  生产者即数据的发布者，该角色将消息发布到Kafka的topic中。broker接收到生产者发送的消息后，
+
+  broker将该消息追加到当前用于追加数据的segment文件中。生产者发送的消息，存储到一个partition
+
+  中，生产者也可以指定数据存储的partition。
 
 - Consumers（消费者）
 
@@ -508,6 +514,18 @@ Kafka 从 0.11 版本开始引入了事务支持。事务可以保证 Kafka 在 
 
 #### 5.1.1 消息发送流程
 
+![img](./img/20201012165125716.png)
+
+① 首先要构造一个 ProducerRecord 对象，该对象可以声明主题Topic、分区Partition、键 Key以及值 Value，主题和值是必须要声明的，分区和键可以不用指定。
+
+② 调用send() 方法进行消息发送。
+
+③ 因为消息要到网络上进行传输，所以必须进行序列化，序列化器的作用就是把消息的 key 和value对象序列化成字节数组后，生产者就知道该往哪个主题和分区发送记录了。
+
+④ 接着这条记录会被添加到一个记录批次里面，这个批次里所有的消息会被发送到相同的主题和分区。会有一个独立的线程来把这些记录批次发送到相应的 Broker 上。
+
+⑤ Broker成功接收到消息，表示发送成功，返回消息的元数据（包括主题和分区信息以及记录在分区里的偏移量）。发送失败，可以选择重试或者直接抛出异常。
+
 Kafka 的 Producer 发送消息采用的是**异步发送**的方式。在消息发送的过程中，涉及到了**两个线程——main 线程和 Sender 线程**，以及**一个线程共享变量——RecordAccumulator**。main 线程将消息发送给 RecordAccumulator，Sender 线程不断从 RecordAccumulator 中拉取消息发送到 Kafka broker。
 
 ![](./img/kafka_send.png)
@@ -678,13 +696,11 @@ Kafka 的 Producer 发送消息采用的是**异步发送**的方式。在消息
    }
    ```
 
-   
+#### 5.1.3 **同步发送** API
 
-   #### 5.1.3 **同步发送** API
+同步发送的意思就是，一条消息发送之后，会阻塞当前线程，直至返回 ack。
 
-   同步发送的意思就是，一条消息发送之后，会阻塞当前线程，直至返回 ack。
-
-   由于 send 方法返回的是一个 Future 对象，根据 Futrue 对象的特点，我们也可以实现同步发送的效果，只需在调用 Future 对象的 get 方发即可。
+由于 send 方法返回的是一个 Future 对象，根据 Futrue 对象的特点，我们也可以实现同步发送的效果，只需在调用 Future 对象的 get 方发即可。
 
    ```java
    package com.pyy.kafka.basic;
@@ -750,7 +766,6 @@ Kafka 的 Producer 发送消息采用的是**异步发送**的方式。在消息
 
    
 
-   
 
 ### 5.2 Consumer API
 
@@ -1067,7 +1082,8 @@ Producer 拦截器(interceptor)是在 Kafka 0.10 版本被引入的，主要用�
 1. 增加时间戳拦截器 
 
    ```java
-package com.pyy.kafka.basic;
+   package com.pyy.kafka.basic;
+   ```
 
 import org.apache.kafka.clients.producer.ProducerInterceptor;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -1112,7 +1128,7 @@ public class TimeInterceptor implements ProducerInterceptor<String, String> {
 
 （2）统计发送消息成功和发送失败消息数，并在 producer 关闭时打印这两个计数器
 
-```java
+​```java
 package com.pyy.kafka.basic;
 
 import org.apache.kafka.clients.producer.ProducerInterceptor;
@@ -1159,7 +1175,7 @@ public class CounterInterceptor implements ProducerInterceptor<String, String> {
 
     }
 }
-```
+   ```
 
 （3）producer 主程序
 

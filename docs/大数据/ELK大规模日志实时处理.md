@@ -211,7 +211,7 @@ Kafka中的Producer和consumer采用的是push（推送）、pull（拉取）的
 
 在存储结构上，每个partition在物理上对应一个文件夹，该文件夹下存储这个partition的所有消息和索引文件，每个partion(目录)相当于一个巨型文件被平均分配到多个大小相等segment(段)数据文件中。
 
-partiton命名规则为topic名称+序号，第一个partiton序号从0开始，序号最大值为partitions数量减1。
+partiton (文件夹)命名规则为topic名称+序号，第一个partiton序号从0开始，序号最大值为partitions数量减1。
 
 在每个partition (文件夹)中有多个大小相等的segment(段)数据文件，每个segment的大小是相同的，但是每条消息的大小可能不相同，因此segment 数据文件中消息数量不一定相等。
 
@@ -804,13 +804,14 @@ filebeat.inputs:
 
    - **fields:** topic对应的消息字段或自定义增加的字段。
      
+   
    通过filebeat接收到的内容，默认增加了不少字段，但是有些字段对数据分析来说没有太大用处，所以有时候需要删除这些没用的字段，在filebeat配置文件中添加如下配置，即可删除不需要的字段:
-     
+   
      ```yaml
      processors:
        - drop_fields:
         fields: ["beat", "input", "source", "offset"]
-   ```
+     ```
      这个设置表示删除"beat"、"input"、"source"、"offset" 四个字段，其中， @timestamp 和@metadata字段是不能删除的。做完这个设置后，再次查看kafka中的输出日志，已经不再输出这四个字段信息了。
 
 ### 6.8 安装并配置Logstash服务
