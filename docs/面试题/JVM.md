@@ -100,8 +100,6 @@ public static void main(String[] args) {
     }
 
 }
-
-
 ```
 
 当出现 OOM 时可以通过工具来分析 GC-Roots[引用链](https://github.com/crossoverJie/Java-Interview/blob/master/MD/GarbageCollection.md#可达性分析算法)  ，查看对象和 GC-Roots 是如何进行关联的，是否存在对象的生命周期过长，或者是这些对象确实改存在的，那就要考虑将堆内存调大了。
