@@ -1,6 +1,22 @@
 #  远程过程调用协议RPC(Remote Procedure Call)
 
-## 1. RPC 演化过程
+## RPC 和 Http 区别
+
+https://www.cnblogs.com/helloworldmybokeyuan/p/11626833.html
+
+- Remote Produce Call远程过程调用， 自定义数据格式，基于原生TCP通信，速度快，效率高 底层 基于JDK 动态 代理socket封装
+
+- 可以让用户像调用本地服务接口一样调用远程服务，对用户屏蔽实现细节
+
+- 要求服务提供方和消费方使用相同技术（dubbo）
+
+  RPC调用流程图：
+
+  ![在这里插入图片描述](./img/17ed3c177e02fb87dd2cada0bd165792.png)
+
+
+
+## RPC 演化过程
 
 从单机到分布式 -> 分布式通信 - > 最基本：二进制数据传输 TCP/IP
 
