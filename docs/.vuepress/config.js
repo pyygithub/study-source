@@ -19,11 +19,11 @@ module.exports = {
         logo: '/img/logo.png',
 		// 导航栏配置
         nav: [
-			{text: '分布式', link: '/分布式/'},
-			{text: 'DevOps', link: '/DevOps/'},
 			{text: '大数据', link: '/大数据/'},
+			{text: '分布式', link: '/分布式/'},
 			{text: '数据结构和算法', link: '/数据结构和算法/'},
-			{text: '面试题', link: '/面试题/'},
+			{text: '消息队列', link: '/消息队列/'},
+			{text: 'DevOps', link: '/DevOps/'},
             {text: '博客', link: 'https://www.jianshu.com/u/af08f637aff8'}
         ],
         sidebarDepth: 5
