@@ -533,7 +533,6 @@ Spring Boot使用一些宽松的规则将环境属性绑定到@ConfigurationProp
 @Component
 @ConfigurationProperties("acme.my-person.person")
 public class OwnerProperties {
-
     private String firstName;
 }
 ```
@@ -700,35 +699,230 @@ acme:
 
 我们依然在启动的时候我们通过`--pring.profiles.active=dev来指定。
 
+## 五、Java 中的 SPI
 
+### 5.1 什么是java的SPI
 
-## 五、SpringBoot自动配置解读
+SPI全称Service Provider Interface，是Java提供的一套用来被第三方实现或者扩展的API，它可以用来启用框架扩展和替换组件。
 
-### 5.1 Java 中的 SPI
+![在这里插入图片描述](./img/20200520144938989.png)
 
-SPI的全名为Service Provider Interface.大多数开发人员可能不熟悉，因为这个是针对厂商或者插件的。在java.util.ServiceLoader的文档里有比较详细的介绍。
+Java SPI 实际上是“**基于接口的编程＋策略模式＋配置文件**”组合实现的动态加载机制。
 
-简单的总结下java SPI机制的思想。我们系统里抽象的各个模块，往往有很多不同的实现方案。面向的对象的设计里，我们一般推荐模块之间基于接口编程，模块之间不对实现类进行硬编码。一旦代码里涉及具体的实现类，就违反了可拔插的原则，如果需要替换一种实现，就需要修改代码。为了实现在模块装配的时候能不在程序里动态指明，这就需要一种服务发现机制。
+系统设计的各个抽象，往往有很多不同的实现方案，在面向的对象的设计里，一般推荐模块之间基于接口编程，模块之间不对实现类进行硬编码。一旦代码里涉及具体的实现类，就违反了可拔插的原则，如果需要替换一种实现，就需要修改代码。为了实现在模块装配的时候能不在程序里动态指明，这就需要一种服务发现机制。
+Java SPI就是提供这样的一个机制：为某个接口寻找服务实现的机制。有点类似IOC的思想，就是将装配的控制权移到程序之外，在模块化设计中这个机制尤其重要。所以SPI的核心思想就是解耦。
 
-java SPI就是提供这样的一个机制：为某个接口寻找服务实现的机制。有点类似IOC的思想，就是将装配的控制权移到程序之外，在模块化设计中这个机制尤其重要。
+### 5.2 SPI 应用场景
 
-**Java SPI 规范**
+比较常见的例子：
+
+- JDBC加载不同类型数据库的驱动
+- SLF4J加载不同提供商的日志实现类
+- Spring中大量使用了SPI,比如：对servlet3.0规范对ServletContainerInitializer的实现、自动类型转换Type Conversion SPI(Converter SPI、Formatter SPI)等
+
+### 5.3 Java SPI 规范
 
 要使用Java SPI，需要遵循如下约定：
 
-1. 当服务提供者提供了接口的一种具体实现后，在jar包的META-INF/services目录下创建一个以“接口全路径名”为命名的文件，内容为实现类的全限定名；
+1. 当服务提供者提供了接口的一种具体实现后，在jar包的META-INF/services目录下创建一个以“接口全限定名”为命名的文件，内容为实现类的全限定名；
 2. 接口实现类所在的jar包放在主程序的classpath中；
 3. 主程序通过java.util.ServiceLoder动态装载实现模块，它通过扫描META-INF/services目录下的配置文件找到实现类的全限定名，把类加载到JVM；
 4. SPI的实现类必须携带一个不带参数的构造方法；
 
-### 5.2 Spring Boot 中的 SPI 机制
+### 5.4 案例代码
+
+1. 创建父工程
+
+   ![image-20201120142015990](./img/image-20201120142015990.png)
+
+2. 创建service-common工程
+
+   ![在这里插入图片描述](./img/20200520150700161.png)
+
+   此工程模块为其他工程的公共的依赖模块，在其中定义PayService接口
+
+   ```java
+   public interface PayService {
+       public void pay();
+   }
+   ```
+
+3. 创建ali-pay工程
+
+   ![image-20201120142140689](./img/image-20201120142140689.png)
+
+   在pom.xml文件中引入依赖
+
+   ```xml
+   <dependencies>
+       <dependency>
+           <groupId>cn.tx.spi</groupId>
+           <artifactId>service-common</artifactId>
+           <version>1.0-SNAPSHOT</version>
+       </dependency>
+   </dependencies>
+   ```
+
+   创建PayService的实现类AliPayService
+
+   ```java
+   public class AliPayService implements PayService {
+       public void pay() {
+           System.out.println("支付宝支付");
+       }
+   }
+   ```
+
+   在resources下创建META-INF.services包
+
+   创建cn.tx.service.PayService文件内容如下：指定文件名所示的接口的实现类
+
+   ```java
+   cn.tx.impl.AliPayService
+   ```
+
+4. 创建wx-pay工程
+
+   ![image-20201120142324371](./img/image-20201120142324371.png)
+
+   在pom.xml文件中引入依赖
+
+   ```xml
+   <dependencies>
+       <dependency>
+           <groupId>cn.tx.spi</groupId>
+           <artifactId>service-common</artifactId>
+           <version>1.0-SNAPSHOT</version>
+       </dependency>
+   </dependencies>
+   ```
+
+   创建PayService的实现类WxPayService
+
+   ```java
+   public class WxPayService implements PayService {
+       public void pay() {
+           System.out.println("微信支付");
+       }
+   }
+   ```
+
+   在resources下创建META-INF.services包
+   创建cn.tx.service.PayService文件内容如下：指定文件名所示的接口的实现类
+
+   ```java
+   cn.tx.impl.WxPayService
+   ```
+
+5. 创建main-pay工程(测试工程)
+
+   引入依赖
+
+   ```xml
+   <dependencies>
+       <dependency>
+           <groupId>cn.tx.spi</groupId>
+           <artifactId>service-common</artifactId>
+           <version>1.0-SNAPSHOT</version>
+       </dependency>
+       <dependency>
+           <groupId>cn.tx.spi</groupId>
+           <artifactId>ali-pay</artifactId>
+           <version>1.0-SNAPSHOT</version>
+       </dependency>
+       <!--<dependency>
+               <groupId>cn.tx.spi</groupId>
+               <artifactId>wx-pay</artifactId>
+               <version>1.0-SNAPSHOT</version>
+           </dependency>-->
+   </dependencies>
+   ```
+
+   创建测试类
+
+   ```java
+   public class Test {
+   
+       public static void main(String[] args) {
+           ServiceLoader<PayService> services = ServiceLoader.load(PayService.class);
+           for (PayService service : services) {
+               service.pay();
+           }
+       }
+   }
+   ```
+
+   执行测试：我们可以看到我们引入的Ali-pay就能得到AlipayService的实现类实例
+
+   ![在这里插入图片描述](./img/20200520164520519.png)
+
+   如果我在pom中切换依赖
+
+   ```xml
+   <dependencies>
+       <dependency>
+           <groupId>cn.tx.spi</groupId>
+           <artifactId>service-common</artifactId>
+           <version>1.0-SNAPSHOT</version>
+       </dependency>
+       <!--<dependency>
+               <groupId>cn.tx.spi</groupId>
+               <artifactId>ali-pay</artifactId>
+               <version>1.0-SNAPSHOT</version>
+           </dependency>-->
+       <dependency>
+           <groupId>cn.tx.spi</groupId>
+           <artifactId>wx-pay</artifactId>
+           <version>1.0-SNAPSHOT</version>
+       </dependency>
+   </dependencies>
+   ```
+
+   再次执行测试：我们可以看到我们引入的wx-pay就能得到WxpayService的实现类实例
+
+   ![在这里插入图片描述](./img/20200520164810666.png)
+
+   如果两种支付的依赖都引入
+
+   ```xml
+   <dependencies>
+       <dependency>
+           <groupId>cn.tx.spi</groupId>
+           <artifactId>service-common</artifactId>
+           <version>1.0-SNAPSHOT</version>
+       </dependency>
+       <dependency>
+           <groupId>cn.tx.spi</groupId>
+           <artifactId>ali-pay</artifactId>
+           <version>1.0-SNAPSHOT</version>
+       </dependency>
+       <dependency>
+           <groupId>cn.tx.spi</groupId>
+           <artifactId>wx-pay</artifactId>
+           <version>1.0-SNAPSHOT</version>
+       </dependency>
+   </dependencies>
+   ```
+
+   测试结果
+
+   ![在这里插入图片描述](./img/20200520164918534.png)
+
+### 5.5 总结
+
+使用Java SPI机制的优势是实现解耦，使得第三方服务模块的装配控制的逻辑与调用者的业务代码分离，而不是耦合在一起。应用程序可以根据实际业务情况启用框架扩展或替换框架组件。
+Springboot的原理即是使用期原理来做的自动配置。
+
+
+
+## 六、Spring Boot 中的 SPI 机制
 
 在Spring中也有一种类似与Java SPI的加载机制。它在META-INF/spring.factories文件中配置接口的实现类名称，然后在程序中读取这些配置文件并实例化。
 这种自定义的SPI机制是Spring Boot Starter实现的基础。
 
 ![image-20201118170135064](./img/image-20201118170135064.png)
 
-### 5.3 Spring Factories 实现原理
+### 5.1 Spring Factories 实现原理
 
 spring-core包里定义了SpringFactoriesLoader类，这个类实现了检索META-INF/spring.factories文件，并获取指定接口的配置的功能。在这个类中定义了两个对外的方法：
 
@@ -797,9 +991,10 @@ com.xxx.interface=com.xxx.classname
 在Spring Boot的很多包中都能够找到spring.factories文件，下面就是spring-boot包中的spring.factories文件
 
 在Spring Boot中，使用的最多的就是starter。starter可以理解为一个可拔插式的插件，例如，你想使用JDBC插件，那么可以使用spring-boot-starter-jdbc；如果想使用MongoDB，可以使用spring-boot-starter-data-mongodb。
+
 初学的同学可能会说：如果我要使用MongoDB，我直接引入驱动jar包就行了，何必要引入starter包？starter和普通jar包的区别在于，它能够实现自动配置，和Spring Boot无缝衔接，从而节省我们大量开发时间。
 
-### 5.4 自动配置类原理
+### 5.2 自动配置类原理
 
 我们可以发现在spring-boot-autoconfigure中的spring.factories里面保存着springboot的默认提供的自动配置类。
 
@@ -839,4 +1034,148 @@ protected AutoConfigurationEntry getAutoConfigurationEntry(
    return new AutoConfigurationEntry(configurations, exclusions);
 }
 ```
+
+### 5.3 条件判断@Conditional
+
+@Conditional表示仅当所有指定条件都匹配时，组件才有资格注册 。
+该@Conditional注释可以在以下任一方式使用：
+
+- 作为任何@Bean方法的方法级注释
+- 作为任何类的直接或间接注释的类型级别注释 @Component，包括@Configuration类
+
+改注解主要源码之一，通过match匹配，符合条件才装载到Spring容器
+
+**作用：总而言之，只有@Conditional指定的条件成立，才给容器添加组件**
+
+@Conditional派生注解：@Conditional派生了很多注解，下面给个表格列举一下派生注解的用法
+
+| @Conditional派生注解            | 作用(都是判断是否符合指定的条件)               |
+| ------------------------------- | ---------------------------------------------- |
+| @ConditionalOnJava              | 系统的java版本是否符合要求                     |
+| @ConditionalOnBean              | 有指定的Bean类                                 |
+| @ConditionalOnMissingBean       | 没有指定的bean类                               |
+| @ConditionalOnExpression        | 符合指定的SpEL表达式                           |
+| @ConditionalOnClass             | 有指定的类                                     |
+| @ConditionalOnMissingClass      | 没有指定的类                                   |
+| @ConditionalOnSingleCandidate   | 容器只有一个指定的bean，或者这个bean是首选bean |
+| @ConditionalOnProperty          | 指定的property属性有指定的值                   |
+| @ConditionalOnResource          | 路径下存在指定的资源                           |
+| @ConditionalOnWebApplication    | 系统环境是web环境                              |
+| @ConditionalOnNotWebApplication | 系统环境不是web环境                            |
+| @ConditionalOnjndi              | JNDI存在指定的项                               |
+
+## 七、Spring Boot 数据源自动配置
+
+### 7.1 数据源自动管理
+
+引入jdbc的依赖和springboot的应用场景
+
+```xml
+<dependency>
+   <groupId>org.springframework.boot</groupId>
+   <artifactId>spring-boot-starter-jdbc</artifactId>
+</dependency>
+
+<dependency>
+   <groupId>mysql</groupId>
+   <artifactId>mysql-connector-java</artifactId>
+   <scope>runtime</scope>
+</dependency>
+```
+
+让我们使用yaml方式配置，创建application.yaml
+
+在默认情况下， 数据库连接可以使用DataSource池进行自动配置
+
+- 默认Hikari可用， Springboot将使用它。
+
+我们可以自己指定数据源配置，通过type来选取使用哪种数据源
+
+```yaml
+spring:
+  datasource:
+    username: root
+    password: root
+    url: jdbc:mysql://localhost:3306/boot_demo
+    driver-class-name: com.mysql.jdbc.Driver
+    type: com.zaxxer.hikari.HikariDataSource
+   # type: org.apache.commons.dbcp2.BasicDataSource
+```
+
+### 7.2 数据源自动配置原理
+
+在数据源自动配置类里面我们可以看到默认支持的数据源类型
+
+![image-20201120172409058](./img/image-20201120172409058.png)
+
+我们可以看到三种数据源的配置
+
+![image-20201120172432513](./img/image-20201120172432513.png)
+
+点开starter-jdbc我们可以看到Hikari是默认的数据源
+
+![image-20201120172738415](./img/image-20201120172738415.png)
+
+
+
+### 7.3 配置 Druid 数据源
+
+引入druid的依赖
+
+```xml
+<dependency>
+   <groupId>com.alibaba</groupId>
+   <artifactId>druid</artifactId>
+   <version>1.0.9</version>
+</dependency>
+```
+
+修改spring.datasource.type=com.alibaba.druid.pool.DruidDataSource
+
+ 
+
+在application.yaml中加入
+
+```yaml
+spring:
+  datasource:
+    username: root
+    password: root
+    url: jdbc:mysql://localhost:3306/boot_demo
+    driver-class-name: com.mysql.jdbc.Driver
+    type: com.alibaba.druid.pool.DruidDataSource
+    initialSize: 5
+    minIdle: 5
+    maxActive: 20
+    maxWait: 60000
+    timeBetweenEvictionRunsMillis: 60000
+    minEvictableIdleTimeMillis: 300000
+    validationQuery: SELECT 1 FROM DUAL
+    testWhileIdle: true
+    testOnBorrow: false
+    testOnReturn: false
+    poolPreparedStatements: true
+    filters: stat,wall,log4j
+    maxPoolPreparedStatementPerConnectionSize: 20
+    useGlobalDataSourceStat: true
+    connectionProperties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=500
+```
+
+创建数据源注册类
+
+```java
+@Configuration
+public class DruidConfig {
+
+    @ConfigurationProperties(prefix = "spring.datasource")
+    @Bean
+    public DataSource dataSource(){
+        return new DruidDataSource();
+    }
+}
+```
+
+
+
+## 八、内嵌Tomcat启动流程
 
