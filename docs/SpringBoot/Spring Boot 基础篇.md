@@ -1175,7 +1175,222 @@ public class DruidConfig {
 }
 ```
 
+## 八、自定义 Starter
 
+### 8.1 SpringBoot starter机制
 
-## 八、内嵌Tomcat启动流程
+SpringBoot中的starter是一种非常重要的机制，能够抛弃以前繁杂的配置，将其统一集成进starter，应用者只需要在maven中引入starter依赖，SpringBoot就能自动扫描到要加载的信息并启动相应的默认配置。starter让我们摆脱了各种依赖库的处理，需要配置各种信息的困扰。SpringBoot会自动通过classpath路径下的类发现需要的Bean，并注册进IOC容器。SpringBoot提供了针对日常企业应用研发各种场景的spring-boot-starter依赖模块。所有这些依赖模块都遵循着约定成俗的默认配置，并允许我们调整这些配置，即遵循“约定大于配置”的理念。
 
+### 8.2 为什么要自定义starter
+
+在我们的日常开发工作中，经常会有一些独立于业务之外的配置模块，我们经常将其放到一个特定的包下，然后如果另一个工程需要复用这块功能的时候，需要将代码硬拷贝到另一个工程，重新集成一遍，麻烦至极。如果我们将这些可独立于业务代码之外的功配置模块封装成一个个starter，复用的时候只需要将其在pom中引用依赖即可，SpringBoot为我们完成自动装配，简直不要太爽。
+
+### 8.3 自定义starter的命名规则
+
+SpringBoot提供的starter以`spring-boot-starter-xxx`的方式命名的。官方建议自定义的starter使用`xxx-spring-boot-starter`命名规则。以区分SpringBoot生态提供的starter。
+
+### 8.4 实例
+
+#### 8.4.1 新建工程
+
+命名为demo-spring-boot-starter
+
+![img](./img/1635748-20190514214456549-79818005.png)
+
+#### 8.4.2 引入 pom 依赖
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.1.4.RELEASE</version>
+    </parent>
+    <groupId>com.demo</groupId>
+    <artifactId>demo-spring-boot-starter</artifactId>
+    <version>0.0.1-RELEASE</version>
+    <name>demo-spring-boot-starter</name>
+    <description>Demo project for Spring Boot</description>
+
+    <properties>
+        <java.version>1.8</java.version>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+        </dependency>
+    </dependencies>
+</project>
+```
+
+#### 8.4.3 定义一个实体类映射配置信息
+
+@ConfigurationProperties(prefix = "demo") 它可以把相同前缀的配置信息通过配置项名称映射成实体类，比如我们这里指定 prefix = "demo" 这样，我们就能将以demo为前缀的配置项拿到了。
+
+> ps：其实这个注解很强大，它不但能映射成String或基本类型的变量。还可以映射为List，Map等数据结构。
+
+```java
+package com.demo.starter.properties;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+
+@ConfigurationProperties(prefix = "demo")
+public class DemoProperties {
+    private String sayWhat;
+    private String toWho;
+
+    public String getSayWhat() {
+        return sayWhat;
+    }
+
+    public void setSayWhat(String sayWhat) {
+        this.sayWhat = sayWhat;
+    }
+
+    public String getToWho() {
+        return toWho;
+    }
+
+    public void setToWho(String toWho) {
+        this.toWho = toWho;
+    }
+}
+```
+
+#### 8.4.4 定义一个Service
+
+```java
+package com.demo.starter.service;
+
+public class DemoService {
+    public String sayWhat;
+    public String toWho;
+    public DemoService(String sayWhat, String toWho){
+        this.sayWhat = sayWhat;
+        this.toWho = toWho;
+    }
+    public String say(){
+        return this.sayWhat + "!  " + toWho;
+    }
+}
+```
+
+#### 8.4.5 定义一个配置类
+
+这里，我们将DemoService类定义为一个Bean，交给Ioc容器。
+
+- @Configuration 注解就不多说了。
+
+- @EnableConfigurationProperties 注解。
+
+  该注解是用来开启对3步骤中 @ConfigurationProperties 注解配置Bean的支持。也就是@EnableConfigurationProperties注解告诉Spring Boot 能支持@ConfigurationProperties。
+
+  当然了，也可以在 @ConfigurationProperties 注解的类上添加 @Configuration 或者 @Component 注解
+
+- @ConditionalOnProperty 注解控制 @Configuration 是否生效。简单来说也就是我们可以通过在yml配置文件中控制 @Configuration 注解的配置类是否生效。
+
+```java
+package com.demo.starter.config;
+
+import com.demo.starter.properties.DemoProperties;
+import com.demo.starter.service.DemoService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@EnableConfigurationProperties(DemoProperties.class)
+@ConditionalOnProperty(
+        prefix = "demo",
+        name = "isopen",
+        havingValue = "true"
+)
+public class DemoConfig {
+    @Autowired
+    private DemoProperties demoProperties;
+
+    @Bean(name = "demo")
+    public DemoService demoService(){
+        return new DemoService(demoProperties.getSayWhat(), demoProperties.getToWho());
+    }
+}
+```
+
+#### 8.4.6 创建spring.factories
+
+如图，新建META-INF文件夹，然后创建spring.factories文件，
+
+![img](./img/1635748-20190514220933924-541927671.png)
+
+在该文件中加入如下配置，该配置指定上步骤中定义的配置类为自动装配的配置。
+
+```properties
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=com.demo.starter.config.DemoConfig
+```
+
+#### 8.4.7 测试
+
+在demo-spring-boot-starter工程中执行mvn clean install 一个自定义的starter新鲜出炉。
+
+新建测试工程
+
+引入starter依赖
+
+```xml
+<dependency>
+    <groupId>com.demo</groupId>
+    <artifactId>demo-spring-boot-starter</artifactId>
+    <version>0.0.1-RELEASE</version>
+</dependency>
+```
+
+配置文件 application.yml
+
+```yaml
+demo:
+	isopen=true
+	say-what=hello
+	to-who=shf
+```
+
+然后写个测试类。
+
+```java
+package com.example.test.controller;
+
+import com.demo.starter.service.DemoService;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import javax.annotation.Resource;
+
+@RestController
+public class DemoController {
+    @Resource(name = "demo")
+    private DemoService demoService;
+
+    @GetMapping("/say")
+    public String sayWhat(){
+        return demoService.say();
+    }
+
+}
+```
+
+ 浏览器
+
+![img](./img/1635748-20190514221725902-1205704283.png)
