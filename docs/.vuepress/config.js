@@ -8,7 +8,7 @@ module.exports = {
     base: '/study/',
     markdown: {
 		// 代码块显示行号
-        lineNumbers: false 
+        lineNumbers: true 
     },
     plugins: [
 	"reading-progress",
