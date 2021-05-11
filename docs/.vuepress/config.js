@@ -19,12 +19,12 @@ module.exports = {
         logo: '/img/logo.png',
 		// 导航栏配置
         nav: [
+        	{text: 'Java技术栈', link: '/Java技术栈/'},
 			{text: '技术方案', link: '/技术方案/'},
 			{text: '大数据', link: '/大数据/'},
 			{text: '分布式', link: '/分布式/'},
 			{text: '数据结构和算法', link: '/数据结构和算法/'},
 			{text: '消息队列', link: '/消息队列/'},
-			{text: 'SpringBoot', link: '/SpringBoot/'},
 			{text: 'DevOps', link: '/DevOps/'},
             {text: '博客', link: 'https://www.jianshu.com/u/af08f637aff8'}
         ],
