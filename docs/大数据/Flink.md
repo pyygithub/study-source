@@ -492,31 +492,214 @@ KeyedStream<String, String> keyBy = socketText.keyBy(new KeySelector<String, Str
 
 ## 三、 DataStream Operator
 
-### 3.1 DataStream Source
+### 3.1 Source
 
 #### 3.1.1 基于文件
 
-readTextFile(path) - 读取文件的数据
+- readTextFile(filePath) - 读取本地/HDFS/文件夹（压缩文件也可以）的数据
 
-readFile(fileInputFormat, path) - 通过自定义的读取方式，来读取文件的数据
+- readFile(fileInputFormat, path) - 通过自定义的读取方式，来读取文件的数据
 
-#### 3.1.2 基于socket
+示例：
 
-socketTextStream 从scoket端口中读取数据
+```java
+DataStreamSource<String> ds1 = env.readTextFile("data/input/word.txt");
+DataStreamSource<String> ds2 = env.readTextFile("data/input");
+DataStreamSource<String> ds3 = env.readTextFile("hdfs://10.10.30.10:9000/file/path");
+DataStreamSource<String> ds4 = env.readTextFile("data/input/word.txt.ga");
+```
+
+#### 3.1.2 基于 Socket
+
+- socketTextStream 从scoket端口中读取数据
+
+示例：
+
+```java
+DataStreamSource<String> ds1 = env.socketTextStream("localhost", 9999);
+```
 
 #### 3.1.3 基于集合
 
-fromCollection(Collection) - 从collection集合里读取数据，从而形成一个数据流，集合里的元素类型需要一致
+- fromCollection(Collection) - 从collection集合里读取数据，从而形成一个数据流，集合里的元素类型需要一致
 
-formElements(T ...) - 从数组里读取数据，从而形成一个数据流，数组里的元素类型需要一致
+- formElements(T ...) - 从数组里读取数据，从而形成一个数据流，数组里的元素类型需要一致
 
-generateSequence(from, to) - 创建一个数据流，数据源里的数据从from到to的数字。
+- generateSequence(from, to) - 创建一个数据流，数据源里的数据从from到to的数字。
 
-#### 3.1.4 自定义 source
+示例：
 
-addSource - 自定义一个数据源，比如FlinkKafkaConsumer，从kafka里读取数据。
+```java
+DataStreamSource<String> ds1 = env.fromCollection(Arrays.asList("hadoop spark flink", "hadoop spark flink"));
+DataStreamSource<String> ds2 = env.fromElements("hadoop spark flink", "hadoop spark flink");
+DataStreamSource<Long> ds3 = env.generateSequence(1, 100);
+```
 
-### 3.2 DataStream Transformations
+#### 3.1.4 自定义 Source
+
+##### 随机生成数据
+
+一般用于测试，模拟生成一些数据
+
+Flink还提供了数据源接口，我们实现该接口就可以实现自定义数据源，不同的接口有不同的功能，分类如下：
+
+- SourceFunction：非并行数据源（并行度只能=1）
+- RichSourceFunction： 多功能非并行数据源（并行度只能=1）
+- ParallelSourceFunction：并行数据源（并行度能够>=1)
+- RichParallelSourceFunction：多功能并行数据源（并行度能够>=1）
+
+示例：
+
+```java
+public class SourceDemoCustom {
+    public static void main(String[] args) throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setRuntimeMode(RuntimeExecutionMode.AUTOMATIC);
+
+        DataStreamSource<Order> ds = env.addSource(new MyOrderSource()).setParallelism(2);
+        ds.print();
+        env.execute();
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class Order {
+        private String id;
+        private Integer userId;
+        private Integer money;
+        private Long createTime;
+    }
+
+    /**
+     * 自定义数据源
+     */
+    public static class MyOrderSource extends RichParallelSourceFunction<Order> {
+
+        private Boolean flag = true;
+
+        // 执行并生成数据
+        @Override
+        public void run(SourceContext<Order> ctx) throws Exception {
+            Random random = new Random();
+
+            while (flag) {
+                String orderId = UUID.randomUUID().toString();
+                int userId = random.nextInt(3);
+                int money = random.nextInt(101);
+                long createTime = System.currentTimeMillis();
+
+                ctx.collect(new Order(orderId, userId, money, createTime));
+                Thread.sleep(1000);
+            }
+        }
+
+        // 执行cancle命令的时候执行
+        @Override
+        public void cancel() {
+            flag = false;
+        }
+    }
+
+}
+```
+
+##### MySQL
+
+实际开发中，经常会实时接收一些数据，要和MySQL中存储的一些规则进行匹配，那么这时候就可以使用Flink自定义数据源从MySQL中读取数据。
+
+需求：
+
+从MySQL中实时加载数据
+
+要求MySQL中的数据有变化，也能被实时加载出来
+
+示例：
+
+```java
+public class SourceDemoCustom {
+    public static void main(String[] args) throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setRuntimeMode(RuntimeExecutionMode.AUTOMATIC);
+
+        DataStreamSource<Student> ds = env.addSource(new MySQLSource()).setParallelism(2);
+        ds.print();
+        env.execute();
+    }
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    public static class Student {
+        private Long id;
+        private String name;
+        private Integer age;
+    }
+
+    /**
+     * 自定义数据源
+     */
+    public static class MySQLSource extends RichParallelSourceFunction<Student> {
+        private boolean flag = true;
+
+        private Connection connection = null;
+        private PreparedStatement preparedStatement = null;
+        private ResultSet resultSet = null;
+
+        // open 只执行一次，适合开启资源
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/bigdata", "root", "root");
+            String sql = "select id, name, age from t_student";
+            preparedStatement = connection.prepareStatement(sql);
+
+        }
+
+        @Override
+        public void run(SourceContext<Student> ctx) throws Exception {
+            while (flag) {
+                resultSet = preparedStatement.executeQuery();
+                while (resultSet.next()) {
+                    long id = resultSet.getLong("id");
+                    String name = resultSet.getString("name");
+                    int age = resultSet.getInt("age");
+
+                    ctx.collect(new Student(id, name, age));
+                }
+
+                Thread.sleep(5000);
+            }
+        }
+
+        // 接收到 cancel 命令时调用（取消数据生成）
+        @Override
+        public void cancel() {
+            flag = false;
+        }
+
+        // close 关闭资源
+        @Override
+        public void close() throws Exception {
+            if (connection != null) {
+                connection.close();
+            }
+            if (preparedStatement != null) {
+                preparedStatement.close();
+            }
+            if (resultSet != null) {
+                resultSet.close();
+            }
+        }
+    }
+
+}
+```
+
+
+
+
+
+### 3.2 Transformations
 
 DataStream 算子转换概览
 
@@ -532,35 +715,25 @@ Flink提供了大量的算子操作供用户使用，常见的算子主要包括
 
 - 调用用户定义的MapFunction对DataStream[T]数据进行处理，形成新的Data-Stream[T]，其中数据格式可能会发生变化，常用作对数据集内数据的清洗和转换。例如将输入数据集中的每个数值全部加 1 处理，并且将数据输出到下游数据集
 
-样例：
-
-```java
-SingleOutputStreamOperator<String> userBehaviorMap = userBehavior.map(new RichMapFunction<UserBehavior, String>() {
-            @Override
-            public String map(UserBehavior value) throws Exception {
-                String action = "";
-                switch (value.action) {
-                    case "pv":
-                        action = "浏览";
-                    case "cart":
-                        action = "加购";
-                    case "fav":
-                        action = "收藏";
-                    case "buy":
-                        action = "购买";
-                }
-                return action;
-            }
-        });
-```
-
 示意图：
-
-![img](./img/a7c1d69ea440dc32783d6150e24a43ca5f2.png)
 
 将雨滴形状转换成相对应的圆形形状的map操作
 
-#### 3.2.2 FlatMap
+![img](./img/a7c1d69ea440dc32783d6150e24a43ca5f2.png)
+
+#### 3.2.2 Filter
+
+说明：
+
+- DataStream → DataStream，过滤算子，对数据进行判断，符合条件即返回true的数据会被保留，否则被过滤。
+
+示意图：
+
+将红色与绿色雨滴过滤掉，保留蓝色雨滴。
+
+![img](file:///Users/didi/Desktop/study-source/docs/大数据/img/6482514442938e6d39a647bf54d46cfae6b.png?lastModify=1621955169)
+
+#### 3.2.3 FlatMap
 
 说明：
 
@@ -568,49 +741,11 @@ SingleOutputStreamOperator<String> userBehaviorMap = userBehavior.map(new RichMa
 
 - 事实上，flatMap算子可以看做是filter与map的泛化，即它能够实现这两种操作。flatMap算子对应的FlatMapFunction定义了flatMap方法，可以通过向collector对象传递数据的方式返回0个，1个或者多个事件作为结果。
 
-样例：
-
-```java
-SingleOutputStreamOperator<UserBehavior> userBehaviorflatMap = userBehavior.flatMap(new RichFlatMapFunction<UserBehavior, UserBehavior>() {
-            @Override
-            public void flatMap(UserBehavior value, Collector<UserBehavior> out) throws Exception {
-                if (value.gender.equals("女")) {
-                    out.collect(value);
-                }
-            }
-        });
-```
-
 示意图：
 
 将黄色的雨滴过滤掉，将蓝色雨滴转为圆形，保留绿色雨滴
 
 ![img](./img/e74f32ef15f71e3d12cd68c9138309d0e07.png)
-
-#### 3.2.3 Filter
-
-说明：
-
-- DataStream → DataStream，过滤算子，对数据进行判断，符合条件即返回true的数据会被保留，否则被过滤。
-
-样例：
-
-```java
-SingleOutputStreamOperator<UserBehavior> userBehaviorFilter = userBehavior.filter(new RichFilterFunction<UserBehavior>() {
-            @Override
-            public boolean filter(UserBehavior value) throws Exception {
-                return value.action.equals("buy");//保留购买行为的数据
-            }
-        });
-```
-
-
-
-示意图：
-
-将红色与绿色雨滴过滤掉，保留蓝色雨滴。
-
-![img](./img/6482514442938e6d39a647bf54d46cfae6b.png)
 
 #### 3.2.4 keyBy
 
@@ -623,18 +758,7 @@ SingleOutputStreamOperator<UserBehavior> userBehaviorFilter = userBehavior.filte
   (2) 字段表达式,用于元组、POJO以及样例类;
   (3) 键值选择器，即keySelector，可以从输入事件中提取键值
 
-样例：
-
-```java
-SingleOutputStreamOperator<Tuple2<String, Integer>> userBehaviorkeyBy = userBehavior.map(new RichMapFunction<UserBehavior, Tuple2<String, Integer>>() {
-            @Override
-            public Tuple2<String, Integer> map(UserBehavior value) throws Exception {
-                return Tuple2.of(value.action.toString(), 1);
-            }
-        }).keyBy(0) // scala元组编号从1开始，java元组编号是从0开始
-           .sum(1); //滚动聚合
-
-```
+注意：流处理中没有groupBy，而是keyBy
 
 示意图：
 
@@ -650,26 +774,61 @@ SingleOutputStreamOperator<Tuple2<String, Integer>> userBehaviorkeyBy = userBeha
 - 将一个ReduceFunction应用在一个keyedStream上,每到来一个事件都会与当前reduce的结果进行聚合，
   产生一个新的DataStream,该算子不会改变数据类型，因此输入流与输出流的类型永远保持一致。
 
-样例：
-
-```java
-SingleOutputStreamOperator<Tuple2<String, Integer>> userBehaviorReduce = userBehavior.map(new RichMapFunction<UserBehavior, Tuple2<String, Integer>>() {
-            @Override
-            public Tuple2<String, Integer> map(UserBehavior value) throws Exception {
-                return Tuple2.of(value.action.toString(), 1);
-            }
-        }).keyBy(0) // scala元组编号从1开始，java元组编号是从0开始
-          .reduce(new RichReduceFunction<Tuple2<String, Integer>>() {
-              @Override
-              public Tuple2<String, Integer> reduce(Tuple2<String, Integer> value1, Tuple2<String, Integer> value2) throws Exception {
-                  return Tuple2.of(value1.f0,value1.f1 + value2.f1);//滚动聚合,功能与sum类似
-              }
-          });
-```
-
 示意图：
 
 ![img](./img/514d5c7e17b42aee3fd3ac0b01fc351e8fb.png)
+
+综合示例：
+
+需求：对流数据中的单词进行统计，排除敏感词TMD
+
+```java
+       // flatMap
+        DataStream<String> words = source.flatMap(new FlatMapFunction<String, String>() {
+            @Override
+            public void flatMap(String value, Collector<String> out) throws Exception {
+                String[] split = value.split(" ");
+
+                for (String word : split) {
+                    out.collect(word);
+                }
+            }
+        });
+
+        // filter
+        DataStream<String> filted = words.filter(new FilterFunction<String>() {
+            @Override
+            public boolean filter(String value) throws Exception {
+                return !value.equals("TMD"); // 如果是TMD则返回false，表示过滤掉
+            }
+        });
+
+        // map
+        DataStream<Tuple2<String, Integer>> wordAndOne = filted.map(new MapFunction<String, Tuple2<String, Integer>>() {
+            @Override
+            public Tuple2<String, Integer> map(String value) throws Exception {
+                return Tuple2.of(value, 1);
+            }
+        });
+
+        // keyBy
+        KeyedStream<Tuple2<String, Integer>, String> grouped = wordAndOne.keyBy(t -> t.f0);
+
+        // sum
+        SingleOutputStreamOperator<Tuple2<String, Integer>> result = grouped.sum(1);
+        // reduce
+        SingleOutputStreamOperator<Tuple2<String, Integer>> result1 = grouped.reduce(new ReduceFunction<Tuple2<String, Integer>>() {
+            @Override
+            public Tuple2<String, Integer> reduce(Tuple2<String, Integer> value1, Tuple2<String, Integer> value2) throws Exception {
+                // Tuple2<String, Integer> value1: 进来的（单词, 历史值：第一次0)
+                // Tuple2<String, Integer> value2: 进来的（单词, 1)
+                // 返回 （单词, 0 + 1)  -> （单词, 1 + 1) ->（单词, 2 + 1)
+                return Tuple2.of(value1.f0, value1.f1 + value2.f1);
+            }
+        });
+```
+
+
 
 #### 3.2.6 Aggregations(滚动聚合)
 
@@ -716,7 +875,7 @@ public class TestFlinkOperator {
 
 说明：
 
-- DataStream* → DataStream，将多条流合并，新的的流会包括所有流的数据，值得注意的是，两个流的数据类型必须一致，另外，来自两条流的事件会以FIFO(先进先出)的方式合并，所以并不能保证两条流的顺序，此外，union算子不会对数据去重，每个输入事件都会被发送到下游算子。
+- DataStream* → DataStream，将**多条流合并**，新的的流会包括所有流的数据，值得注意的是，两个流的数据类型必须一致，另外，来自两条流的事件会以FIFO(先进先出)的方式合并，所以并不能保证两条流的顺序，此外，union算子不会对数据去重，每个输入事件都会被发送到下游算子。
 
 样例：
 
@@ -761,13 +920,13 @@ public class TestFlinkOperator {
 
 示意图：
 
-![img](./img/61ce2dec8c268a55fa5f5fc328ab992c8ef.png)
+![image-20210605204118876](./img/image-20210605204118876.png)
 
 #### 3.2.8 connect
 
 说明：
 
-- DataStream,DataStream → ConnectedStreams，将两个流的事件进行组合，返回一个ConnectedStreams对象，两个流的数据类型可以不一致,ConnectedStreams对象提供了类似于map(),flatMap()功能的算子，如CoMapFunction与CoFlatMapFunction分别表示map()与flatMap算子，这两个算子会分别作用于两条流，注意：CoMapFunction 或CoFlatMapFunction被调用的时候并不能控制事件的顺序只要有事件流过该算子，该算子就会被调用。
+- DataStream,DataStream → ConnectedStreams，将**两个流的事件进行组合**，返回一个ConnectedStreams对象，两个流的数据类型可以不一致,ConnectedStreams对象提供了类似于map(),flatMap()功能的算子，如CoMapFunction与CoFlatMapFunction分别表示map()与flatMap算子，这两个算子会分别作用于两条流，注意：CoMapFunction 或CoFlatMapFunction被调用的时候并不能控制事件的顺序只要有事件流过该算子，该算子就会被调用。
 
 样例：
 
@@ -785,12 +944,20 @@ ConnectedStreams<UserBehavior, Tuple2<String, Integer>> behaviorConnectedStreams
         });
 ```
 
-#### 3.2.9 split
+示意图：
+
+![image-20210605204427309](./img/image-20210605204427309.png)
+
+#### 3.2.9 split、select和SideOutput（拆分和选择）
 
 说明：
 
 - DataStream → SplitStream，将流分割成两条或多条流，与union相反。分割之后的流与输入流的数据类型一致，
   对于每个到来的事件可以被路由到0个、1个或多个输出流中。可以实现过滤与复制事件的功能，DataStream.split()接收一个OutputSelector函数，用来定义分流的规则，即将满足不同条件的流分配到用户命名的一个输出。
+- Select 就是获取分流后对应的数据
+- Side Outputs 可以使用process方法对流中的数据进行处理，并针对不同的处理结果将数据收集到不同的OutputTag 中
+
+注意：split 和 select 函数已过期并移除（flink1.12)
 
 样例：
 
@@ -810,11 +977,312 @@ SplitStream<UserBehavior> userBehaviorSplitStream = userBehavior.split(new Outpu
 userBehaviorSplitStream.select("buy").print();
 ```
 
+```java
+// 对流中的数据按奇数偶数进行拆分
+DataStreamSource<Integer> ds = env.fromElements(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+
+OutputTag<Integer> oddTag = new OutputTag<>("奇数", TypeInformation.of(Integer.class));
+OutputTag<Integer> evenTag = new OutputTag<>("偶数", TypeInformation.of(Integer.class));
+
+SingleOutputStreamOperator<Integer> result = ds.process(new ProcessFunction<Integer, Integer>() {
+  @Override
+  public void processElement(Integer value, Context ctx, Collector<Integer> out) throws Exception {
+    // out 收集完的还是放在一起的，ctx可以将数据放到不同的outputTag
+    if (value % 2 == 0) {
+      ctx.output(evenTag, value);
+    } else {
+      ctx.output(oddTag, value);
+    }
+  }
+});
+
+DataStream<Integer> oddResult = result.getSideOutput(oddTag);
+DataStream<Integer> evenResult = result.getSideOutput(evenTag);
+```
+
+
+
 示意图：
 
 ![img](./img/536fa6fa4a96f12f7fef8bbdc78249b6442.png)
 
+#### 3.2.10 rebalance 重平衡分区
+
+说明：
+
+-   Flink 也有数据倾斜的时候，比如当前有大约10亿条数据需要处理，在处理过程中可能会出现下图所示数据倾斜，其它3台机器执行完毕也要等待机器1执行完毕才算整体将任务完成。
+
+  ![image-20210605212112108](./img/image-20210605212112108.png)
+
+- 出现这种情况比较好的解决方案就是rebalance（内部使用round  robin方法将数据均匀打散）
+
+  
+
+样例：
+
+```java
+DataStreamSource<Long> longDs = env.fromSequence(0, 100);
+// 将数据随机分配一下，可能会出现数据倾斜
+SingleOutputStreamOperator<Long> filterDs = longDs.filter(new FilterFunction<Long>() {
+  @Override
+  public boolean filter(Long num) throws Exception {
+    return num > 10;
+  }
+});
+
+// 没有经过rebalance，有可能数据倾斜
+SingleOutputStreamOperator<Tuple2<Integer, Integer>> result1 = filterDs
+  .map(new RichMapFunction<Long, Tuple2<Integer, Integer>>() {
+    @Override
+    public Tuple2<Integer, Integer> map(Long value) throws Exception {
+      // 子任务Id/分区编号
+      int subTaskId = getRuntimeContext().getIndexOfThisSubtask();
+      return Tuple2.of(subTaskId, 1);
+    }
+  }).keyBy(t -> t.f0)// 按子任务Id/分区编号分组
+  .sum(1);// 统计每个子任务Id/分区有几个元素
+
+// 没有经过rebalance，解决数据倾斜
+SingleOutputStreamOperator<Tuple2<Integer, Integer>> result2 = filterDs.rebalance()
+  .map(new RichMapFunction<Long, Tuple2<Integer, Integer>>() {
+    @Override
+    public Tuple2<Integer, Integer> map(Long value) throws Exception {
+      // 子任务Id/分区编号
+      int subTaskId = getRuntimeContext().getIndexOfThisSubtask();
+      return Tuple2.of(subTaskId, 1);
+    }
+  }).keyBy(t -> t.f0)// 按子任务Id/分区编号分组
+  .sum(1);// 统计每个子任务Id/分区有几个元素
+```
+
+
+
+示意图：
+
+![image-20210605212323510](./img/image-20210605212323510.png)
+
+
+
+#### 3.2.11 其它分区
+
+![image-20210605214007151](./img/image-20210605214007151.png)
+
+ 
+
 ### 3.3 Sink
 
-Flink提供了许多内置的Sink，比如writeASText，print，HDFS，Kaka等等，下面将基于MySQL实现一个自定义的Sink，可以与自定义的MysqlSource进行对比，具体如下：
+Flink提供了许多内置的Sink，比如writeASText，print，HDFS，Kaka等等
+
+#### 3.3.1 基于控制台和文件的sink
+
+- ds.print() 直接输出在控制台
+
+- ds.printToErr() 会在控制台上以红色输出
+
+- ds.writeAsText("本地/HDFS的path", WriteMode.OVERWRITE).setParallelism(1)
+
+  在输出到path的时候，可以在设置并行度，如果
+
+  并行度 >1 ，则path为目录
+
+  并行度 = 1，则path为文件名           ![image-20210605215342111](./img/image-20210605215342111.png)
+
+```java
+ds.print();
+ds.print("输出标识");
+ds.printToErr();// 会在控制台上以红色输出
+ds.printToErr("输出标识");
+ds.writeAsText("data/out/result1").setParallelism(1);
+ds.writeAsText("data/out/result1").setParallelism(2);
+```
+
+#### 3.3.2 自定义 sink
+
+将Flink集合中的数据通过自定义sink保存到MySQL
+
+```java
+ public static void main(String[] args) throws Exception {
+   StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+   env.setRuntimeMode(RuntimeExecutionMode.AUTOMATIC);
+
+   DataStreamSource<StudentInfo> ds = env.fromElements(new StudentInfo("zhangwuji", "男", 23));
+
+   ds.addSink(new MySQLSink());
+
+   env.execute();
+ }
+
+public static class MySQLSink extends RichSinkFunction<StudentInfo> {
+  private Connection conn = null;
+  private PreparedStatement ps = null;
+
+  @Override
+  public void open(Configuration parameters) throws Exception {
+    conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/bigdata", "root", "123456");
+    String sql = "insert into t_student(name, gender, age) values(?, ? ,?)";
+    ps = conn.prepareStatement(sql);
+  }
+
+  @Override
+  public void invoke(StudentInfo value, Context context) throws Exception {
+    ps.setString(1, value.getName());
+    ps.setString(2, value.getGender());
+    ps.setInt(3, value.getAge());
+
+    ps.execute();
+  }
+
+
+  @Override
+  public void close() throws Exception {
+    if (conn != null) {
+      conn.close();
+    }
+    if (ps!=null) {
+      ps.close();
+    }
+  }
+}
+```
+
+
+
+###  3.4 Connectors
+
+#### 3.4.1 Collectors-JDBC
+
+引入pom依赖
+
+```xml
+<dependency>
+  <groupId>org.apache.flink</groupId>
+  <artifactId>flink-connector-jdbc_2.12</artifactId>
+  <version>1.12.0</version>
+</dependency>
+```
+
+```JAVA
+DataStreamSource<StudentInfo> ds = env.fromElements(new StudentInfo("zhangwuji", "男", 23));
+
+ds.addSink(JdbcSink.sink("insert into t_student(name, gender, age) values(?, ? ,?)",
+                         (ps, value) -> {
+                           ps.setString(1, value.getName());
+                           ps.setString(2, value.getGender());
+                           ps.setInt(3, value.getAge());
+                         }, new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
+                         .withDriverName("com.mysql.jdbc.Driver")
+                         .withUrl("jdbc:mysql://localhost:3306/bigdata")
+                         .withUsername("root")
+                         .withPassword("123456")
+                         .build()
+                        ));
+
+env.execute();
+```
+
+#### 3.4.2 Collectors-Kafka
+
+![image-20210605223211333](./img/image-20210605223211333.png)
+
+https://ci.apache.org/projects/flink/flink-docs-release-1.13/docs/connectors/datastream/kafka/
+
+```java
+env.addSource(new Kafka Consumer/Source(参数))             
+```
+
+参数设置：
+
+以下参数都必须/建议设置上
+
+1. 订阅的主题
+2. 反序列化规则
+3. 消费者属性-集群地址
+4. 消费者属性-消费者组id（如果不设置，会有默认的，但是默认的不方便管理）
+5. 消费者属性-offset重置规则，如earliest/latest
+6. 动态分区检测（当kafka的分区数变化/增加时,flink能够检测到）
+7. 如果没有设置Checkpoint,那么可以设置自动提交offset，后续学习了Checkpoint会把offset随着做Checkpoint的时候提交到Checkpoint或默认主题中
+
+
+
+
+
+```java
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setRuntimeMode(RuntimeExecutionMode.AUTOMATIC);
+
+        // 1.source
+        Properties prop = new Properties();
+        //集群地址
+        prop.setProperty("bootstrap.servers", "node:9001");
+        // 消费组ID
+        prop.setProperty("group.id", "flink");
+        //latest：有offset记录从offset记录位置开始消费，没有offset记录，从最新或最后的消息开始消费
+        //earliest：有offset记录从offset记录位置开始消费，没有offset记录，从最早或最开始的消息开始消费
+        prop.setProperty("auto.offset.reset", "latest");
+        // 会开启一个后台线程每隔5s检测一下kafka的分区情况，实现动态分区检测
+        prop.setProperty("flink.partition-descovery.interval-millis", "5000");
+        //自动提交（默认提交到默认主题，后续学历checkpoint会存储到checkpoint中和默认主题中）
+        prop.setProperty("enable.auto.commit", "true");
+        //自动提交时间间隔
+        prop.setProperty("auto.commit.interval.ms", "2000");
+
+        // 使用连接参数创建 FlinkKafkaConsumer/kafkaSource
+        FlinkKafkaConsumer<String> kafkaSource = new FlinkKafkaConsumer<String>("flink_kafka_topic1", new SimpleStringSchema(), prop);
+        DataStreamSource<String> kakfaDs = env.addSource(kafkaSource);
+
+        //2. transformation
+        SingleOutputStreamOperator<String> etlDs = kakfaDs.filter(new FilterFunction<String>() {
+            @Override
+            public boolean filter(String value) throws Exception {
+                return value.contains("success");
+            }
+        });
+
+        // 3. sink
+        Properties prop1 = new Properties();
+        prop1.setProperty("bootstrap.servers", "node:9001");
+        FlinkKafkaProducer<String> kafkaSink = new FlinkKafkaProducer<>("flink_kafka_topic2", new SimpleStringSchema(), prop1);
+        etlDs.addSink(kafkaSink);
+        
+        // 4. execute
+        env.execute();
+```
+
+#### 3.4.3 Connectors-Redis
+
+通过Flink操作redis其实我们可以通过传统的redis连接池Jpools进行redis的相关操作，但是Flink提供了专门的redis的RedisSink，使用更加方便，而且我们不用考虑性能问题。
+
+https://bahir.apache.org/docs/flink/current/flink-streaming-redis/
+
+```xml
+<dependency>
+  <groupId>org.apache.bahir</groupId>
+  <artifactId>flink-connector-redis_2.11</artifactId>
+  <version>1.1-SNAPSHOT</version>
+</dependency>
+```
+
+```java
+public static class RedisExampleMapper implements RedisMapper<Tuple2<String, String>>{
+
+    @Override
+    public RedisCommandDescription getCommandDescription() {
+        return new RedisCommandDescription(RedisCommand.HSET, "HASH_NAME");
+    }
+
+    @Override
+    public String getKeyFromData(Tuple2<String, String> data) {
+        return data.f0;
+    }
+
+    @Override
+    public String getValueFromData(Tuple2<String, String> data) {
+        return data.f1;
+    }
+}
+FlinkJedisPoolConfig conf = new FlinkJedisPoolConfig.Builder().setHost("127.0.0.1").build();
+
+DataStream<String> stream = ...;
+stream.addSink(new RedisSink<Tuple2<String, String>>(conf, new RedisExampleMapper());
+```
 

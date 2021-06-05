@@ -28,7 +28,7 @@ module.exports = {
 			{text: 'DevOps', link: '/DevOps/'},
             {text: '博客', link: 'https://www.jianshu.com/u/af08f637aff8'}
         ],
-        sidebarDepth: 5
+        sidebarDepth: 7
     },
 	markdown: {
 		extendMarkdown: md => {
