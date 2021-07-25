@@ -575,7 +575,7 @@ c5: 2018-02-17    # 日期必须使用ISO 8601格式，即yyyy-MM-dd
 # 6 时间类型
 c6: 2018-02-17T15:02:31+08:00  # 时间使用ISO 8601格式，时间和日期之间使用T连接，最后使用+代表时区
 # 7 字符串类型
-c7: heima     # 简单写法，直接写值 , 如果字符串中间有特殊字符，必须使用双引号或者单引号包裹 
+c7: pyy     # 简单写法，直接写值 , 如果字符串中间有特殊字符，必须使用双引号或者单引号包裹 
 c8: line1
     line2     # 字符串过多的情况可以拆成多行，每一行会被转化成一个空格
 ~~~
@@ -583,11 +583,11 @@ c8: line1
 ~~~yaml
 # 对象
 # 形式一(推荐):
-heima:
+pyy:
   age: 15
   address: Beijing
 # 形式二(了解):
-heima: {age: 15,address: Beijing}
+pyy: {age: 15,address: Beijing}
 ~~~
 
 ~~~yaml
@@ -1820,7 +1820,7 @@ metadata:
   name: pod-base
   namespace: dev
   labels:
-    user: heima
+    user: pyy
 spec:
   containers:
   - name: nginx
@@ -2142,7 +2142,7 @@ Warning  FailedScheduling  <unknown>  default-scheduler  0/2 nodes are available
   - 容器的存活性探测（liveness probe）、就绪性探测（readiness probe）
 - pod终止过程
 
-![image-20200412111402706](img/image-20200412111402706.png)
+![image-20200412111402706](./img/image-20200412111402706.png)
 
 在整个生命周期中，Pod会出现5种**状态**（**相位**），分别如下：
 
@@ -2168,7 +2168,7 @@ Warning  FailedScheduling  <unknown>  default-scheduler  0/2 nodes are available
 
 6. apiServer将接收到的pod状态信息存入etcd中
 
-   ![image-20200406184656917](img/image-20200406184656917.png)
+   ![image-20200406184656917](./img/image-20200406184656917.png)
 
 **pod的终止过程**
 
@@ -2787,6 +2787,7 @@ pod.spec.affinity.nodeAffinity
         values 值
         operator 关系符 支持In, NotIn, Exists, DoesNotExist, Gt, Lt
 	weight 倾向权重，在范围1-100。
+	
 关系符的使用说明:
 
 - matchExpressions:
@@ -3091,7 +3092,7 @@ Node被设置上污点之后就和Pod之间存在了一种相斥的关系，进�
 - NoSchedule：kubernetes将不会把Pod调度到具有该污点的Node上，但不会影响当前Node上已存在的Pod
 - NoExecute：kubernetes将不会把Pod调度到具有该污点的Node上，同时也会将Node上已存在的Pod驱离
 
-![image-20200605021606508](img/image-20200605021831545.png)
+![image-20200605021606508](./img/image-20200605021831545.png)
 
 使用kubectl设置和去除污点的命令示例如下：
 
@@ -3109,13 +3110,13 @@ kubectl taint nodes node1 key-
 接下来，演示下污点的效果：
 
 1. 准备节点node1（为了演示效果更加明显，暂时停止node2节点）
-2. 为node1节点设置一个污点: `tag=heima:PreferNoSchedule`；然后创建pod1( pod1 可以 )
-3. 修改为node1节点设置一个污点: `tag=heima:NoSchedule`；然后创建pod2( pod1 正常  pod2 失败 )
-4. 修改为node1节点设置一个污点: `tag=heima:NoExecute`；然后创建pod3 ( 3个pod都失败 )
+2. 为node1节点设置一个污点: `tag=pyy:PreferNoSchedule`；然后创建pod1( pod1 可以 )
+3. 修改为node1节点设置一个污点: `tag=pyy:NoSchedule`；然后创建pod2( pod1 正常  pod2 失败 )
+4. 修改为node1节点设置一个污点: `tag=pyy:NoExecute`；然后创建pod3 ( 3个pod都失败 )
 
 ```shell
 # 为node1设置污点(PreferNoSchedule)
-[root@master ~]# kubectl taint nodes node1 tag=heima:PreferNoSchedule
+[root@master ~]# kubectl taint nodes node1 tag=pyy:PreferNoSchedule
 
 # 创建pod1
 [root@master ~]# kubectl run taint1 --image=nginx:1.17.1 -n dev
@@ -3125,7 +3126,7 @@ taint1-7665f7fd85-574h4   1/1     Running   0          2m24s   10.244.1.59   nod
 
 # 为node1设置污点(取消PreferNoSchedule，设置NoSchedule)
 [root@master ~]# kubectl taint nodes node1 tag:PreferNoSchedule-
-[root@master ~]# kubectl taint nodes node1 tag=heima:NoSchedule
+[root@master ~]# kubectl taint nodes node1 tag=pyy:NoSchedule
 
 # 创建pod2
 [root@master ~]# kubectl run taint2 --image=nginx:1.17.1 -n dev
@@ -3136,7 +3137,7 @@ taint2-544694789-6zmlf    0/1     Pending   0          21s     <none>        <no
 
 # 为node1设置污点(取消NoSchedule，设置NoExecute)
 [root@master ~]# kubectl taint nodes node1 tag:NoSchedule-
-[root@master ~]# kubectl taint nodes node1 tag=heima:NoExecute
+[root@master ~]# kubectl taint nodes node1 tag=pyy:NoExecute
 
 # 创建pod3
 [root@master ~]# kubectl run taint3 --image=nginx:1.17.1 -n dev
@@ -3177,7 +3178,7 @@ spec:
   tolerations:      # 添加容忍
   - key: "tag"        # 要容忍的污点的key
     operator: "Equal" # 操作符
-    value: "heima"    # 容忍的污点的value
+    value: "pyy"    # 容忍的污点的value
     effect: "NoExecute"   # 添加容忍的规则，这里必须和标记的污点规则相同
 ```
 
@@ -3206,3 +3207,4 @@ FIELDS:
    effect    # 对应污点的effect，空意味着匹配所有影响
    tolerationSeconds   # 容忍时间, 当effect为NoExecute时生效，表示pod在Node上的停留时间
 ```
+
