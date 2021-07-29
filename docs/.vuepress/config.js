@@ -25,6 +25,8 @@ module.exports = {
 			{text: '分布式', link: '/分布式/'},
 			{text: '数据结构和算法', link: '/数据结构和算法/'},
 			{text: '消息队列', link: '/消息队列/'},
+            {text: 'k8s', link: '/k8s/'},
+            {text: 'ServiceMesh', link: '/ServiceMesh/'},
 			{text: 'DevOps', link: '/DevOps/'},
             {text: '博客', link: 'https://www.jianshu.com/u/af08f637aff8'}
         ],
