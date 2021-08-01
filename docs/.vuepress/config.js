@@ -1,6 +1,6 @@
 module.exports = {
-    title: 'PYY在线笔记文档',
-    description: 'PYY在线笔记文档',
+    title: 'PYY在线笔记',
+    description: 'PYY在线笔记',
     head: [ // 注入到当前页面的 HTML <head> 中的标签
         ['link', {rel: 'icon', href: '/img/logo.png'}], // 增加一个自定义的 favicon(网页标签的图标)
     ],
@@ -19,18 +19,19 @@ module.exports = {
         logo: '/img/logo.png',
 		// 导航栏配置
         nav: [
-        	{text: 'Java技术栈', link: '/Java技术栈/'},
 			{text: '技术方案', link: '/技术方案/'},
+            {text: 'Java技术栈', link: '/Java技术栈/'},
+            {text: '分布式', link: '/分布式/'},
 			{text: '大数据', link: '/大数据/'},
-			{text: '分布式', link: '/分布式/'},
-			{text: '数据结构和算法', link: '/数据结构和算法/'},
 			{text: '消息队列', link: '/消息队列/'},
+			{text: '数据结构和算法', link: '/数据结构和算法/'},
             {text: 'k8s', link: '/k8s/'},
             {text: 'ServiceMesh', link: '/ServiceMesh/'},
 			{text: 'DevOps', link: '/DevOps/'},
+            {text: '总结', link: '/总结/'},
             {text: '博客', link: 'https://www.jianshu.com/u/af08f637aff8'}
         ],
-        sidebarDepth: 7
+        sidebarDepth: 5
     },
 	markdown: {
 		extendMarkdown: md => {

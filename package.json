@@ -17,8 +17,9 @@
     "markdown-it-disable-url-encode": "^1.0.1",
     "vuepress": "^1.7.0",
     "vuepress-bar": "^0.2.2",
-    "vuepress-plugin-autobar": "github:boboidream/vuepress-bar",
+    "vuepress-plugin-autobar": "boboidream/vuepress-bar",
     "vuepress-plugin-permalink-pinyin": "^1.0.0",
-    "vuepress-plugin-rpurl": "github:boboidream/vuepress-plugin-rpurl"
+    "vuepress-plugin-rpurl": "github:boboidream/vuepress-plugin-rpurl",
+    "vuepress-theme-reco": "^1.6.6"
   }
 }
