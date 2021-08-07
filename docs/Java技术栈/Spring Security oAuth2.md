@@ -1,16 +1,44 @@
-# Spring Security oAuth2
+# Spring Security OAuth2
 
-使用 Spring 提供的 Spring Security oAuth2 搭建一套验证授权及资源访问服务，帮助大家在实现企业微服务架构时能够有效的控制多个服务的统一登录、授权及资源保护工作。
+## 用户认证需求分析
 
-## 什么是 oAuth
+### 用户认证与授权需求
 
-oAuth 协议为用户资源的授权提供了一个安全的、开放而又简易的标准。与以往的授权方式不同之处是 oAuth 的授权不会使第三方触及到用户的帐号信息（如用户名与密码），即第三方无需使用用户的用户名与密码就可以申请获得该用户资源的授权，因此 oAuth 是安全的。
+**什么是用户身份认证？**
+
+用户身份认证即用户去访问系统资源时，系统要求验证用户的身份信息，身份合法方可继续访问。
+
+常见的有用户身份认证表现形式有：用户名密码登录，指纹、人脸识别等。
+
+**什么是用户授权？**
+
+用户认证通过后去访问系统资源，系统会判断用户是否拥有访问资源的权限，只允许访问有权限的系统资源，没有权限的系统资源将无法访问，这个过程叫用户授权。
+
+### 单点登录需求
+
+单点登录（Single Sign On），简称为 SSO，是比较流行的企业业务整合的解决方案之一。SSO的定义是在多个[应用](https://baike.baidu.com/item/应用/3994271)系统中，用户只需要登录一次就可以访问所有相互信任的应用系统。
+
+![image-20210803183124509](./img/image-20210803183124509.png)
+
+### 第三方认证需求
+
+一个微信用户没有注册某学习网站注册，但某学习网站系统可以通过微信系统来验证该用户的身份，验证通过后该用户就可以进行系统学习，基本流程如下：
+
+![image-20210803183559047](./img/image-20210803183559047.png)
+
+从上图可以看出，微信不属于某学习系统，某学习系统也没有存储微信用户的账号，密码登录信息。如果要获取该用户的基本信息则需要通过微信的认证系统（微信认证）进行认证，微信认证通过后，系统便可获取该微信用户的基本信息（用户头像、昵称等），该用户便可不注册直接接入系统。
+
+
+
+## 什么是 OAuth2.0
+
+OAuth（开发授权：Open Authorization）是一个开放标准，允许用户授权第三方应用访问他们存储在另外的服务提供者上的信息，而不需要将用户名和密码提供给第三方应用，即第三方无需使用用户的用户名与密码就可以申请获得该用户资源的授权，因此OAUTH是安全的。
 
 ## 什么是 Spring Security
 
 Spring Security 是一个安全框架，前身是 Acegi Security，能够为 Spring 企业应用系统提供声明式的安全访问控制。Spring Security 基于 Servlet 过滤器、IoC 和 AOP，为 Web 请求和方法调用提供身份确认和授权处理，避免了代码耦合，减少了大量重复代码工作。
 
-## 为什么需要 oAuth2
+## 为什么需要 OAuth2.0
 
 ### 应用场景
 
@@ -105,7 +133,7 @@ http://www.funtl.com/refresh?refresh_token=&client_id=
 实际上的刷新接口类似于：
 
 ```http
-http://www.funtl.com/refresh?refresh_token=&client_id=&client_secret=
+http://localhost:8080/refresh?refresh_token=&client_id=&client_secret=
 ```
 
 以上就是 Refresh Token 机制。Refresh Token 的有效期非常长，会在用户授权时，随 Access Token 一起重定向到回调 URL，传递给客户端。
@@ -160,3 +188,983 @@ https://www.funtl.com/exchange?code=&client_id=&client_secret=
 如果信任关系再进一步，或者调用者是一个后端的模块，没有用户界面的时候，可以使用客户端模式。鉴权服务器直接对客户端进行身份验证，验证通过后，返回 token。
 
 ![image-20210731193254918](./img/image-20210731193254918.png)
+
+## 创建案例工程
+
+### 创建 spring-security-oauth2 工程
+
+聚合工程
+
+相关pom依赖
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.1.4.RELEASE</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>org.example</groupId>
+    <artifactId>spring-security-oauth2</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>spring-security-oauth2-dependencies</module>
+    </modules>
+
+    <properties>
+        <java.version>1.8</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    </properties>
+
+    <licenses>
+        <license>
+            <name>Apache 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>pyy</id>
+            <name>YangYang Pan</name>
+            <email>https://pyygithub.github.io/study/</email>
+        </developer>
+    </developers>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.pyy</groupId>
+                <artifactId>spring-security-oauth2-dependencies</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>io.spring.javaformat</groupId>
+                <artifactId>spring-javaformat-maven-plugin</artifactId>
+                <version>0.0.26</version>
+            </plugin>
+        </plugins>
+    </build>
+
+    <repositories>
+        <repository>
+            <id>spring-milestone</id>
+            <name>Spring Milestone</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>spring-snapshot</id>
+            <name>Spring Snapshot</name>
+            <url>https://repo.spring.io/snapshot</url>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>spring-milestone</id>
+            <name>Spring Milestone</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </pluginRepository>
+        <pluginRepository>
+            <id>spring-snapshot</id>
+            <name>Spring Snapshot</name>
+            <url>https://repo.spring.io/snapshot</url>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </pluginRepository>
+    </pluginRepositories>
+</project>
+```
+
+### 创建spring-security-oauth2-dependencies
+
+用来管理所有相关依赖
+
+相关pom依赖
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.pyy</groupId>
+    <artifactId>spring-security-oauth2-dependencies</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <properties>
+        <spring-cloud.version>Greenwich.RELEASE</spring-cloud.version>
+    </properties>
+
+    <licenses>
+        <license>
+            <name>Apache 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>pyy</id>
+            <name>YangYang Pan</name>
+            <email>https://pyygithub.github.io/study/</email>
+        </developer>
+    </developers>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <repositories>
+        <repository>
+            <id>spring-milestone</id>
+            <name>Spring Milestone</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>spring-snapshot</id>
+            <name>Spring Snapshot</name>
+            <url>https://repo.spring.io/snapshot</url>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>spring-milestone</id>
+            <name>Spring Milestone</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </pluginRepository>
+        <pluginRepository>
+            <id>spring-snapshot</id>
+            <name>Spring Snapshot</name>
+            <url>https://repo.spring.io/snapshot</url>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </pluginRepository>
+    </pluginRepositories>
+
+</project>
+```
+
+
+
+## 创建认证服务器
+
+### 创建认证服务器模板
+
+新建module： spring-security-oauth2-server
+
+相关pom依赖
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.1.4.RELEASE</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.pyy</groupId>
+    <artifactId>spring-security-oauth2</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <url>https://pyygithub.github.io/study/</url>
+
+    <modules>
+        <module>spring-security-oauth2-dependencies</module>
+        <module>spring-security-oauth2-server</module>
+    </modules>
+
+    <properties>
+        <java.version>1.8</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    </properties>
+
+    <licenses>
+        <license>
+            <name>Apache 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>pyy</id>
+            <name>YangYang Pan</name>
+            <email>https://pyygithub.github.io/study/</email>
+        </developer>
+    </developers>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.pyy</groupId>
+                <artifactId>spring-security-oauth2-dependencies</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>io.spring.javaformat</groupId>
+                <artifactId>spring-javaformat-maven-plugin</artifactId>
+                <version>0.0.26</version>
+            </plugin>
+        </plugins>
+    </build>
+
+    <repositories>
+        <repository>
+            <id>spring-milestone</id>
+            <name>Spring Milestone</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <repository>
+            <id>spring-snapshot</id>
+            <name>Spring Snapshot</name>
+            <url>https://repo.spring.io/snapshot</url>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
+    <pluginRepositories>
+        <pluginRepository>
+            <id>spring-milestone</id>
+            <name>Spring Milestone</name>
+            <url>https://repo.spring.io/milestone</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </pluginRepository>
+        <pluginRepository>
+            <id>spring-snapshot</id>
+            <name>Spring Snapshot</name>
+            <url>https://repo.spring.io/snapshot</url>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </pluginRepository>
+    </pluginRepositories>
+</project>
+```
+
+创建Application启动程序
+
+```java
+package com.pyy.oauth2;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+/**
+ * @author panyangyang
+ * @date 2021-08-01 16:35
+ */
+@SpringBootApplication
+public class OAuth2ServerApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(OAuth2ServerApplication.class, args);
+    }
+}
+```
+
+整体项目结构如下：
+
+![image-20210801163944191](./img/image-20210801163944191.png)
+
+### 基于内存存储令牌
+
+#### 概述
+
+基于 **内存存储令牌** 的模式用于演示最基本的操作，帮助大家快速理解 oAuth2 认证服务器中 "认证"、"授权"、"访问令牌” 的基本概念
+
+操作流程：
+
+![image-20210801164133696](./img/image-20210801164133696.png)
+
+- 配置客户端信息：
+
+  **ClientDetailsServiceConfigurer**：
+
+  - `inMemory`：内存配置
+  - `withClient`：客户端标识
+  - `secret`：客户端安全码
+  - `authorizedGrantTypes`：客户端授权类型
+  - `scopes`：客户端授权范围
+  - `redirectUris`：注册回调地址
+
+- 配置 Web 安全
+
+- 通过 GET 请求访问认证服务器获取授权码
+
+  - 端点：`/oauth/authorize`
+
+- 通过 POST 请求利用授权码访问认证服务器获取令牌
+
+  - 端点：`/oauth/token`
+
+**附：默认的端点 URL**
+
+- `/oauth/authorize`：授权端点
+- `/oauth/token`：令牌端点
+- `/oauth/confirm_access`：用户确认授权提交端点
+- `/oauth/error`：授权服务错误信息端点
+- `/oauth/check_token`：用于资源服务访问的令牌解析端点
+- `/oauth/token_key`：提供公有密匙的端点，如果你使用 JWT 令牌的话
+
+
+
+#### 配置认证服务器
+
+创建一个类继承 `AuthorizationServerConfigurerAdapter` 并添加相关注解：
+
+- `@Configuration`
+- `@EnableAuthorizationServer`
+
+```java
+package com.pyy.oauth2.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.oauth2.config.annotation.configurers.ClientDetailsServiceConfigurer;
+import org.springframework.security.oauth2.config.annotation.web.configuration.AuthorizationServerConfigurerAdapter;
+import org.springframework.security.oauth2.config.annotation.web.configuration.EnableAuthorizationServer;
+
+/**
+ * 认证服务器配置
+ * @author panyangyang
+ * @date 2021-08-01 16:44
+ */
+@Configuration
+@EnableAuthorizationServer
+public class AuthorizationServerConfiguration extends AuthorizationServerConfigurerAdapter {
+
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        clients
+                // 使用内存配置
+                .inMemory()
+                // client_id
+                .withClient("client_id")
+                // client_secret
+                .secret("client_secret")
+                // 授权类型
+                .authorizedGrantTypes("authorization_code")
+                // 授权范围
+                .scopes("app")
+                // 注册回调地址
+                .redirectUris("http://www.xxx.com");
+    }
+}
+
+```
+
+#### 服务器安全配置
+
+创建一个类继承 `WebSecurityConfigurerAdapter` 并添加相关注解：
+
+- `@Configuration`
+- `@EnableWebSecurity`
+- `@EnableGlobalMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)`：全局方法拦截
+
+```java
+package com.pyy.oauth2.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+
+/**
+ * 服务器安全配置
+ *
+ * @author panyangyang
+ * @date 2021-08-01 16:52
+ */
+@Configuration
+@EnableWebSecurity
+/** Spring Security默认是禁用注解的，要想开启注解：判断用户对某个控制层的方法是否具有访问权限 */
+@EnableGlobalMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)
+public class WebSecurityConfiguration extends WebSecurityConfigurerAdapter {
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.inMemoryAuthentication()
+                .withUser("admin").password("123456").roles("ADMIN")
+                .and()
+                .withUser("user").password("123456").roles("USER");
+    }
+}
+```
+
+#### application.yaml
+
+```yaml
+spring:
+  application:
+    name: oauth2-server
+  security:
+    user:
+      # 账号
+      name: root
+      # 密码
+      password: 123456
+
+server:
+  port: 8080
+```
+
+#### 访问获取授权码
+
+打开浏览器，输入地址：
+
+```http
+http://localhost:8080/oauth/authorize?client_id=client&response_type=code
+```
+
+第一次访问会跳转到登录页面
+
+![image-20210801170430803](./img/image-20210801170430803.png)
+
+输入 admin 123456 登录，会发现后台报错：
+
+```java
+java.lang.IllegalArgumentException: There is no PasswordEncoder mapped for the id "null"
+	at org.springframework.security.crypto.password.DelegatingPasswordEncoder$UnmappedIdPasswordEncoder.matches(DelegatingPasswordEncoder.java:244) ~[spring-security-crypto-5.1.5.RELEASE.jar:5.1.5.RELEASE]
+```
+
+原因是因为在2.1之后的SpringSecurityOauth2版本中默认不允许使用明文登录，要求必须对密码加密，默认使用加密方式 `BCryptPasswordEncoder`:
+
+```java
+public class PasswordEncoderFactories {
+    public static PasswordEncoder createDelegatingPasswordEncoder() {
+        String encodingId = "bcrypt";
+        Map<String, PasswordEncoder> encoders = new HashMap();
+        encoders.put(encodingId, new BCryptPasswordEncoder());
+        encoders.put("ldap", new LdapShaPasswordEncoder());
+        encoders.put("MD4", new Md4PasswordEncoder());
+        encoders.put("MD5", new MessageDigestPasswordEncoder("MD5"));
+        encoders.put("noop", NoOpPasswordEncoder.getInstance());
+        encoders.put("pbkdf2", new Pbkdf2PasswordEncoder());
+        encoders.put("scrypt", new SCryptPasswordEncoder());
+        encoders.put("SHA-1", new MessageDigestPasswordEncoder("SHA-1"));
+        encoders.put("SHA-256", new MessageDigestPasswordEncoder("SHA-256"));
+        encoders.put("sha256", new StandardPasswordEncoder());
+        return new DelegatingPasswordEncoder(encodingId, encoders);
+    }
+
+    private PasswordEncoderFactories() {
+    }
+}
+```
+
+修改后：
+
+```java
+/**
+ * 服务器安全配置
+ *
+ * @author panyangyang
+ * @date 2021-08-01 16:52
+ */
+@Configuration
+@EnableWebSecurity
+/** Spring Security默认是禁用注解的，要想开启注解：判断用户对某个控制层的方法是否具有访问权限 */
+@EnableGlobalMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)
+public class WebSecurityConfiguration extends WebSecurityConfigurerAdapter {
+
+    @Bean
+    public BCryptPasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        PasswordEncoderFactories.createDelegatingPasswordEncoder();
+
+
+        auth.inMemoryAuthentication()
+                .withUser("admin").password(passwordEncoder().encode("123456")).roles("ADMIN")
+                .and()
+                .withUser("user").password(passwordEncoder().encode("123456")).roles("USER");
+    }
+}
+```
+
+```java
+/**
+ * 认证服务器配置
+ * @author panyangyang
+ * @date 2021-08-01 16:44
+ */
+@Configuration
+@EnableAuthorizationServer
+public class AuthorizationServerConfiguration extends AuthorizationServerConfigurerAdapter {
+
+    @Resource
+    private  BCryptPasswordEncoder passwordEncoder;
+
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        clients
+                // 使用内存配置
+                .inMemory()
+                // client_id
+                .withClient("client")
+                // client_secret
+                .secret(passwordEncoder.encode("secret"))
+                // 授权类型
+                .authorizedGrantTypes("authorization_code")
+                // 授权范围
+                .scopes("app")
+                // 注册回调地址
+                .redirectUris("http://localhost:8080/");
+    }
+}
+```
+
+验证成功后会询问用户是否授权客户端
+
+![image-20210801171654520](./img/image-20210801171654520.png)
+
+选择授权后会跳转到我的博客，浏览器地址上还会包含一个授权码（`code=1JuO6V`），浏览器地址栏会显示如下地址：
+
+```http
+http://www.xxx.com/?code=GmtaGH
+```
+
+有了这个授权码就可以获取访问令牌了
+
+#### 通过授权码向服务器申请令牌
+
+通过 CURL 或是 Postman 请求
+
+```shell
+curl -X POST -H "Content-Type: application/x-www-form-urlencoded" -d 'grant_type=authorization_code&code=1JuO6V' "http://client:secret@localhost:8080/oauth/token"
+```
+
+![image-20210801172808329](./img/image-20210801172808329.png)
+
+
+
+### 基于 JDBC 存储令牌
+
+#### 概述
+
+**基于 JDBC 存储令牌** 的模式用于演示最基本的操作，帮助大家快速理解 oAuth2 认证服务器中 "认证"、"授权"、"访问令牌” 的基本概念
+
+操作流程：
+
+![image-20210801164133696](./img/image-20210801164133696-7827561.png)
+
+- 初始化 oAuth2 相关表
+- 在数据库中配置客户端
+- 配置认证服务器
+  - 配置数据源：`DataSource`
+  - 配置令牌存储方式：`TokenStore` -> `JdbcTokenStore`
+  - 配置客户端读取方式：`ClientDetailsService` -> `JdbcClientDetailsService`
+  - 配置服务端点信息：`AuthorizationServerEndpointsConfigurer`
+    - `tokenStore`：设置令牌存储方式
+  - 配置客户端信息：`ClientDetailsServiceConfigurer`
+    - `withClientDetails`：设置客户端配置读取方式
+- 配置 Web 安全
+  - 配置密码加密方式：`BCryptPasswordEncoder`
+  - 配置认证信息：`AuthenticationManagerBuilder`
+- 通过 GET 请求访问认证服务器获取授权码
+  - 端点：`/oauth/authorize`
+- 通过 POST 请求利用授权码访问认证服务器获取令牌
+  - 端点：`/oauth/token`
+
+**附：默认的端点 URL**
+
+- `/oauth/authorize`：授权端点
+- `/oauth/token`：令牌端点
+- `/oauth/confirm_access`：用户确认授权提交端点
+- `/oauth/error`：授权服务错误信息端点
+- `/oauth/check_token`：用于资源服务访问的令牌解析端点
+- `/oauth/token_key`：提供公有密匙的端点，如果你使用 JWT 令牌的话
+
+####  初始化 oAuth2 相关表
+
+使用官方提供的建表脚本初始化 oAuth2 相关表，地址如下：
+
+```http
+https://github.com/spring-projects/spring-security-oauth/blob/master/spring-security-oauth2/src/test/resources/schema.sql
+```
+
+由于我们使用的是 MySQL 数据库，默认建表语句中主键为 `VARCHAR(256)`，这超过了最大的主键长度，请手动修改为 `128`，并用 `BLOB` 替换语句中的 `LONGVARBINARY` 类型，修改后的建表脚本如下：
+
+```sql
+CREATE TABLE `clientdetails` (
+  `appId` varchar(128) NOT NULL,
+  `resourceIds` varchar(256) DEFAULT NULL,
+  `appSecret` varchar(256) DEFAULT NULL,
+  `scope` varchar(256) DEFAULT NULL,
+  `grantTypes` varchar(256) DEFAULT NULL,
+  `redirectUrl` varchar(256) DEFAULT NULL,
+  `authorities` varchar(256) DEFAULT NULL,
+  `access_token_validity` int(11) DEFAULT NULL,
+  `refresh_token_validity` int(11) DEFAULT NULL,
+  `additionalInformation` varchar(4096) DEFAULT NULL,
+  `autoApproveScopes` varchar(256) DEFAULT NULL,
+  PRIMARY KEY (`appId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `oauth_access_token` (
+  `token_id` varchar(256) DEFAULT NULL,
+  `token` blob,
+  `authentication_id` varchar(128) NOT NULL,
+  `user_name` varchar(256) DEFAULT NULL,
+  `client_id` varchar(256) DEFAULT NULL,
+  `authentication` blob,
+  `refresh_token` varchar(256) DEFAULT NULL,
+  PRIMARY KEY (`authentication_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `oauth_approvals` (
+  `userId` varchar(256) DEFAULT NULL,
+  `clientId` varchar(256) DEFAULT NULL,
+  `scope` varchar(256) DEFAULT NULL,
+  `status` varchar(10) DEFAULT NULL,
+  `expiresAt` timestamp NULL DEFAULT NULL,
+  `lastModifiedAt` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `oauth_client_details` (
+  `client_id` varchar(128) NOT NULL,
+  `resource_ids` varchar(256) DEFAULT NULL,
+  `client_secret` varchar(256) DEFAULT NULL,
+  `scope` varchar(256) DEFAULT NULL,
+  `authorized_grant_types` varchar(256) DEFAULT NULL,
+  `web_server_redirect_uri` varchar(256) DEFAULT NULL,
+  `authorities` varchar(256) DEFAULT NULL,
+  `access_token_validity` int(11) DEFAULT NULL,
+  `refresh_token_validity` int(11) DEFAULT NULL,
+  `additional_information` varchar(4096) DEFAULT NULL,
+  `autoapprove` varchar(256) DEFAULT NULL,
+  PRIMARY KEY (`client_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `oauth_client_token` (
+  `token_id` varchar(256) DEFAULT NULL,
+  `token` blob,
+  `authentication_id` varchar(128) NOT NULL,
+  `user_name` varchar(256) DEFAULT NULL,
+  `client_id` varchar(256) DEFAULT NULL,
+  PRIMARY KEY (`authentication_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `oauth_code` (
+  `code` varchar(256) DEFAULT NULL,
+  `authentication` blob
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE `oauth_refresh_token` (
+  `token_id` varchar(256) DEFAULT NULL,
+  `token` blob,
+  `authentication` blob
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+```
+
+#### 在数据库中配置客户端
+
+在表 `oauth_client_details` 中增加一条客户端配置记录，需要设置的字段如下：
+
+- `client_id`：客户端标识
+- `client_secret`：客户端安全码，**此处不能是明文，需要加密**
+- `scope`：客户端授权范围
+- `authorized_grant_types`：客户端授权类型
+- `web_server_redirect_uri`：服务器回调地址
+
+使用 `BCryptPasswordEncoder` 为客户端安全码加密，代码如下：
+
+```java
+System.out.println(new BCryptPasswordEncoder().encode("secret"));
+```
+
+数据库配置客户端效果图如下：
+
+![image-20210801222752952](./img/image-20210801222752952.png)
+
+#### POM依赖
+
+将下面pom依赖添加到 `spring-security-oauth2-dependencies`
+
+由于使用了 JDBC 存储，我们需要增加相关依赖，数据库连接池部分弃用 `Druid` 改为 `HikariCP` （**号称全球最快连接池**）
+
+```xml
+<dependency>
+    <groupId>com.zaxxer</groupId>
+    <artifactId>HikariCP</artifactId>
+    <version>${hikaricp.version}</version>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-jdbc</artifactId>
+    <exclusions>
+        <!-- 排除 tomcat-jdbc 以使用 HikariCP -->
+        <exclusion>
+            <groupId>org.apache.tomcat</groupId>
+            <artifactId>tomcat-jdbc</artifactId>
+        </exclusion>
+    </exclusions>
+</dependency>
+<dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+    <version>${mysql.version}</version>
+</dependency>
+```
+
+#### 配置认证服务器
+
+创建一个类继承 `AuthorizationServerConfigurerAdapter` 并添加相关注解：
+
+- `@Configuration`
+- `@EnableAuthorizationServer`
+
+```java
+package com.pyy.oauth2.config;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.jdbc.DataSourceBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.oauth2.config.annotation.configurers.ClientDetailsServiceConfigurer;
+import org.springframework.security.oauth2.config.annotation.web.configuration.AuthorizationServerConfigurerAdapter;
+import org.springframework.security.oauth2.config.annotation.web.configuration.EnableAuthorizationServer;
+import org.springframework.security.oauth2.config.annotation.web.configurers.AuthorizationServerEndpointsConfigurer;
+import org.springframework.security.oauth2.provider.ClientDetailsService;
+import org.springframework.security.oauth2.provider.client.JdbcClientDetailsService;
+import org.springframework.security.oauth2.provider.token.TokenStore;
+import org.springframework.security.oauth2.provider.token.store.JdbcTokenStore;
+
+import javax.annotation.Resource;
+import javax.sql.DataSource;
+
+/**
+ * 认证服务器配置
+ * @author panyangyang
+ * @date 2021-08-01 16:44
+ */
+@Configuration
+@EnableAuthorizationServer
+public class AuthorizationServerConfiguration extends AuthorizationServerConfigurerAdapter {
+
+    @Bean
+    @Primary
+    @ConfigurationProperties(prefix = "spring.datasource")
+    public DataSource dataSource() {
+        // 配置数据源（注意，我使用的是 HikariCP 连接池），以上注解是指定数据源，否则会有冲突
+        return DataSourceBuilder.create().build();
+    }
+
+    @Bean
+    public TokenStore tokenStore() {
+        // 基于 JDBC 实现，令牌保存到数据
+        return new JdbcTokenStore(dataSource());
+    }
+
+    @Bean
+    public ClientDetailsService jdbcClientDetails() {
+        // 基于 JDBC 实现，需要事先在数据库配置客户端信息
+        return new JdbcClientDetailsService(dataSource());
+    }
+
+    @Override
+    public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+        // 设置令牌
+        endpoints.tokenStore(tokenStore());
+    }
+
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        // 读取客户端配置
+        clients.withClientDetails(jdbcClientDetails());
+    }
+}
+```
+
+#### 服务器安全配置
+
+创建一个类继承 `WebSecurityConfigurerAdapter` 并添加相关注解：
+
+- `@Configuration`
+- `@EnableWebSecurity`
+- `@EnableGlobalMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)`：全局方法拦截
+
+```java
+package com.pyy.oauth2.config;
+
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+
+/**
+ * 服务器安全配置
+ *
+ * @author panyangyang
+ * @date 2021-08-01 16:52
+ */
+@Configuration
+@EnableWebSecurity
+/** Spring Security默认是禁用注解的，要想开启注解：判断用户对某个控制层的方法是否具有访问权限 */
+@EnableGlobalMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)
+public class WebSecurityConfiguration extends WebSecurityConfigurerAdapter {
+
+    @Bean
+    public BCryptPasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        PasswordEncoderFactories.createDelegatingPasswordEncoder();
+
+
+        auth.inMemoryAuthentication()
+                .withUser("admin").password(passwordEncoder().encode("123456")).roles("ADMIN")
+                .and()
+                .withUser("user").password(passwordEncoder().encode("123456")).roles("USER");
+    }
+}
+```
+
+#### application.yml
+
+```yaml
+spring:
+  application:
+    name: oauth2-server
+  datasource:
+    type: com.zaxxer.hikari.HikariDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    jdbc-url: jdbc:mysql://localhost:3306/oauth2?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=UTC
+    username: root
+    password: 123456
+    hikari:
+      minimum-idle: 5
+      idle-timeout: 600000
+      maximum-pool-size: 10
+      auto-commit: true
+      pool-name: MyHikariCP
+      max-lifetime: 1800000
+      connection-timeout: 30000
+      connection-test-query: SELECT 1
+
+server:
+  port: 8080
+```
+
+#### 访问获取授权码
+
+打开浏览器，输入地址：
+
+```http
+http://localhost:8080/oauth/authorize?client_id=client&response_type=code
+```
+
+第一次访问会跳转到登录页面
+
+![image-20210801170430803](./img/image-20210801170430803.png)
+
+验证成功后会询问用户是否授权客户端
+
+![image-20210801171654520](./img/image-20210801171654520.png)
+
+选择授权后会跳转到我的博客，浏览器地址上还会包含一个授权码（`code=1JuO6V`），浏览器地址栏会显示如下地址：
+
+```http
+http://localhost:8080/?code=MZdjW3
+```
+
+有了这个授权码就可以获取访问令牌了
+
+#### 通过授权码向服务器申请令牌
+
+通过 CURL 或是 Postman 请求
+
+```shell
+curl -X POST -H "Content-Type: application/x-www-form-urlencoded" -d 'grant_type=authorization_code&code=MZdjW3' "http://client:secret@localhost:8080/oauth/token"
+```
+
+结果
+
+```
+{"access_token":"32905a8e-8c7d-415f-9e29-5b608005f855","token_type":"bearer","expires_in":43199,"scope":"app"}%
+```
+
