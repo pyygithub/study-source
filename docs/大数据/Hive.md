@@ -618,1151 +618,2529 @@ hive根据`hive.metastore.uris` 参数值来判断，如果为空，则为本地
 
 ## Hive 安装和环境配置
 
-1. 手动安装：自行Google
-2. CDH安装：自行Google
+### 安装前准备
 
-### Hive 的三种连接方式
+由于Apache Hive是一款基于Hadoop的数据仓库软件，通常部署运行在Linux系统之上。因此不管使用何种方式配置Hive Metastore，必须要先保证服务器的基础环境正常，Hadoop集群健康可用。
 
-1. 第一种交互方式 **bin/hive**
+#### 服务器基础环境
 
-   ```shell
-   #/bin/hive
-   ```
+集群时间同步、防火墙关闭、主机Host映射、免密登录、JDK安装
 
-   通过hive shell来操作hive，但是至多只能存在一个hive shell，启动第二个会被阻塞，也就是说hive shell不支持并发操作。
+#### Hadoop集群健康可用
 
-2. 第二种交互方式 **HiveServer2** 
-
-   基于JDBC等协议：启动hiveserver2，通过jdbc协议可以访问hive，hiveserver2支持高并发。
-
-   简而言之，hiveserver2是Hive启动了一个server，客户端可以使用JDBC协议，通过IP+ Port的方式对其进行访问，达到并发访问的目的。
-
-   ```shell
-   #启动服务端（前台启动命令如下）
-   #/bin/hive --service hiveserver2
-   ```
-   在装了相同版本Hive的其他主机(启动hiveserver2的主机也可以)上启动beeline，可以连接到Hive的server上。执行命令：
-
-   ```shell
-   #/bin/beeline -u jdbc:hive2://node-00:10000
-   ```
-
-3. 第三种交互方式：使用**sql**语句或者**sql**脚本进行交互
-
-   不进入hive的客户端直接执行hive的hql语句 
-
-   ```shell
-   #/bin/hive -e "create database if not exists mytest;"
-   ```
-
-   或者我们可以将我们的hql语句写成一个sql脚本然后执行
-
-   ```shell
-   #vim hive.sql
-   ```
-
-   ```sql
-   create database if not exists mytest; 
-   use mytest; 
-   create table stu(id int,name string);
-   ```
-
-   通过hive -f 来执行我们的sql脚本
-
-   ```shell
-   #/bin/hive -f hive.sql
-   ```
+启动Hive之前必须先启动Hadoop集群。特别要注意，需**等待HDFS安全模式关闭之后再启动运行Hive**。
+Hive不是分布式安装运行的软件，其分布式的特性主要**借由Hadoop**完成。包括**分布式存储、分布式计算**。
 
 
 
+### Hadoop与Hive整合
 
-## **Hive** 数据库操作
-### 创建数据库 
+因为Hive需要把数据**存储在HDFS**上，并且通过MapReduce作为执行引擎处理数据；
 
-```sql
-create database if not exists myhive; 
-use myhive;
-```
-hive的表存放位置模式是由hive-site.xml当中的一个属性指定的
+因此需要在Hadoop中添加相关配置属性，以满足Hive在Hadoop上运行。
+
+修改Hadoop中core-site.xml，并且Hadoop集群同步配置文件，重启生效。
 
 ```xml
-  <property>
-	<name>hive.metastore.warehouse.dir</name
-    <value>/user/hive/warehouse</value>
-  </property>
-```
-
-### 创建数据库并指定位置
-
-```sql
-create database myhive2 location '/myhive2'
-```
-
-### 修改数据库 
-
-可以使用alter database 命令来修改数据库的一些属性。但是数据库的元数据信息是不可更改的，包括
-
-数据库的名称以及数据库所在的位置 
-
-```sql
-alter database myhive2 set dbproperties('createtime'='20180611');
-```
-
-### 查看数据库详细信息 
-
-查看数据库基本信息
-
-```sql
-desc database myhive2;
-```
-
-查看数据库更多详细信息
-
-```sql
-desc database extended myhive2;
-```
-
-### 删除数据库 
-
-删除一个空数据库，如果数据库下面有数据表，那么就会报错
-
-```sql
-drop database myhive2;
-```
-
-强制删除数据库，包含数据库下面的表一起删除
-
-```sql
-drop database myhive cascade; # 不要执行了
+<!-- 整合hive 代理用户配置 -->
+<property>
+	<name>hadoop.proxyuser.root.hosts</name>
+	<value>*</value>
+</property>
+<property>
+	<name>hadoop.proxyuser.root.groups</name>
+	<value>*</value>
+</property>
 ```
 
 
 
-## Hive表操作
+### 远程模式安装
 
+远程模式最大的特点有两个：
 
+- 需要安装MySQL来存储Hive元数据；
+- 需要手动单独配置启动Metastore服务。
 
-### Hive表创建语法 
+![image-20210816210955071](./img/image-20210816210955071.png)
 
-```sql
-create [external] table [if not exists] table_name (
-    col_name data_type [comment '字段描述信息']
-    col_name data_type [comment '字段描述信息'])
-    [comment '表的描述信息']
-    [location '指定表的路径']
-    [partitioned by (col_name data_type,...)]
-    [clustered by (col_name,col_name,...)]
-    [sorted by (col_name [asc|desc],...) into num_buckets buckets]
-    [row format row_format]
-    [location location_path]
-```
-
-说明：
-
-1. CREATE TABLE 创建一个指定名字的表。如果相同名字的表已经存在，则抛出异常；用户可以用IF NOT EXISTS 选项来忽略这个异常。 
-
-2. EXTERNAL 关键字可以让用户创建一个外部表，在建表的同时指定一个指向实际数据的路径 （LOCATION），Hive 创建内部表时，会将数据移动到数据仓库指向的路径；若创建外部表，仅记录数据所在的路径，不对数据的位置做任何改变。在删除表的时候，内部表的元数据和数据会被一起删除，而外部表只删除元数据，不删除数据。 
-
-3. LIKE 允许用户复制现有的表结构，但是不复制数据。 
-
-4. ROW FORMAT DELIMITED [FIELDS TERMINATED BY char] [COLLECTION ITEMS TERMINATED BY char] [MAP KEYS TERMINATED BY char] [LINES TERMINATED BY char] | SERDE serde_name [WITH SERDEPROPERTIES (property_name=property_value, property_name=property_value, ...)] 
-
-   用户在建表的时候可以自定义 SerDe 或者使用自带的 SerDe。如果没有指定 ROW FORMAT 或者 ROW FORMAT DELIMITED，将会使用自带的 SerDe。在建表的时候，用户还需要为表指定列，用户在指定表的列的同时也会指定自定义的 SerDe，Hive通过 SerDe 确定表的具体的列的数据。 
-
-   hive 默认的字段分隔符为ascii码的控制符\001,建表的时候用fields terminated by '\001',如果要测试的话，造数据在vi 打开文件里面，用ctrl+v然后再ctrl+a可以输入这个控制符\001。按顺序，\002的输入方式为ctrl+v,ctrl+b。以此类推。
-
-5. STORED AS 
-
-   SEQUENCEFILE|TEXTFILE|RCFILE 
-
-   如果文件数据是纯文本，可以使用 STORED AS TEXTFILE。如果数据需要压缩，使用 STORED AS SEQUENCEFILE。 
-
-6. PARTITIONED BY
-
-   分区，一个表可以拥有一个或者多个分区，每个分区以文件夹的形式单独存在表文件夹的目录下。
-
-7. CLUSTERED BY
-
-   对于每一个表（table）或者分区， Hive可以进一步组织成桶，也就是说桶是更为细粒度的数据范 
-
-   围划分。Hive也是 针对某一列进行桶的组织。Hive采用对列值哈希，然后除以桶的个数求余的方 
-
-   式决定该条记录存放在哪个桶当中。 
-
-   把表（或者分区）组织成桶（Bucket）有两个理由： 
-
-   1. 获得更高的查询处理效率。桶为表加上了额外的结构，Hive 在处理有些查询时能利用这个结构。具体而言，连接两个在（包含连接列的）相同列上划分了桶的表，可以使用 Map 端连接 （Map-side join）高效的实现。比如JOIN操作。对于JOIN操作两个表有一个相同的列，如果对这两个表都进行了桶操作。那么将保存相同列值的桶进行JOIN操作就可以，可以大大较少JOIN的数据量。 
-
-   2. 使取样（sampling）更高效。在处理大规模数据集时，在开发和修改查询的阶段，如果能在数据集的一小部分数据上试运行查询，会带来很多方便。 
-
-### 管理表的操作
-
-#### 建表初体验
-
-```sql
-use myhive; 
-create table stu(id int,name string); insert into stu values (1,"zhangsan"); 
-select * from stu;
-```
-
-**Hive**建表时候的字段类型
-
-https://cwiki.apache.org/conflfluence/display/Hive/LanguageManual+Types
-
-基本数据类型
-
-| Hive数据类型 | Java数据类型 | 长度   | 例子         |
-| ------------ | --------  | ------- |--------- |
-| TINYINT      | byte         | 1byte有符号整数                                      | 20                                   |
-| SMALINT      | short        | 2byte有符号整数                                      | 20                                   |
-| INT          | int          | 4byte有符号整数                                      | 20                                   |
-| BIGINT       | long         | 8byte有符号整数                                      | 20                                   |
-| BOOLEAN      | boolean      | 布尔类型，true或者false                              | TRUE FALSE                           |
-| FLOAT        | float        | 单精度浮点数                                         | 3.14159                              |
-| DOUBLE       | double       | 双精度浮点数                                         | 3.14159                              |
-| STRING       | string       | 字符系列。可以指定字符集。可以使用单引号或者双引号。 | ‘now is the time’ “for all good men” |
-| TIMESTAMP    |              | 时间类型                                             |                                      |
-| BINARY       |              | 字节数组                                             |                                      |
-
-【注】：对于Hive的string类型就相当于数据库中的varchar类型，该类型是一个可变的字符串，但是它不能声明存储字符长度的限制，理论上它可以存储2GB的字符数。
-
-集合数据类型
-
-| 数据类型 | 描述                                                         | 语法示例 |
-| -------- | ------------------------------------------------------------ | -------- |
-| STRUCT   | 和c语言中的struct类似，都可以通过“点”符号访问元素内容。例如，如果某个列的数据类型是STRUCT{first STRING, last STRING},那么第1个元素可以通过字段.first来引用。 | struct() |
-| MAP      | MAP是一组键-值对元组集合，使用数组表示法可以访问数据。例如，如果某个列的数据类型是MAP，其中键->值对是’first’->’John’和’last’->’Doe’，那么可以通过字段名[‘last’]获取最后一个元素 | map()    |
-| ARRAY    | 数组是一组具有相同类型和名称的变量的集合。这些变量称为数组的元素，每个数组元素都有一个编号，编号从零开始。例如，数组值为[‘John’, ‘Doe’]，那么第2个元素可以通过数组名[1]进行引用。 | Array()  |
-
-【注】：Array、Map和Java中的Array、Map类似；Struct和C语言中的Struct类似，它封装了一个命名字段集合，复杂数据类型允许任意层次 的嵌套。
-
-【案例】：
-
-假设某表有如下一行，我们用JSON格式来表示其数据结构。在Hive下访问的格式为
-
-```json
-{
-    "name": "songsong",
-    "friends": ["bingbing" , "lili"] ,       //列表Array,
-    "children": {                      //键值Map,
-        "xiao song": 18 ,
-        "xiaoxiao song": 19
-    }
-    "address": {                      //结构Struct,
-        "street": "hui long guan" ,
-        "city": "beijing"
-    }
-}
-```
-
-#### 创建表并指定字段之间的分隔符 
-
-```sql
-create table if not exists stu2(id int ,name string) 
-row format delimited fields terminated by '\t'
-```
-
-#### 根据查询结果创建表 
-
-```sql
-create table stu3 as select * from stu2; # 通过复制表结构和表内容创建新表
-```
-
-#### 根据已经存在的表结构创建表 
-
-```sql
-create table stu4 like stu2;
-```
-
-#### 查询表的类型
-
-```sql
-desc formatted stu2;
-```
-
-### 外部表的操作
-
-#### 外部表说明
-
-外部表因为是指定其他的hdfs路径的数据加载到表当中来，所以hive表会认为自己不完全独占这份数据，所以删除hive表的时候，数据仍然存放在hdfs当中，不会删掉
-
-#### 管理表和外部表的使用场景 
-
-每天将收集到的网站日志定期流入HDFS文本文件。在外部表（原始日志表）的基础上做大量的统计分析，用到的中间表、结果表使用内部表存储，数据通过SELECT+INSERT进入内部表
-
-#### 操作案例
-
-分别创建老师与学生表外部表，并向表中加载数据
-
-- 创建老师表
-
-  ```sql
-  create external table teacher (t_id string,t_name string) row format delimited fields terminated by '\t'
-  ```
-
-- 创建学生表 
-
-  ```sql
-  create external table student (s_id string,s_name string,s_birth string , s_sex string ) row format delimited fields terminated by '\t'
-  ```
-
-- 加载数据(本地)
-
-  ```sql
-  load data local inpath '/export/servers/hivedatas/student.csv' into table student;
-  ```
-
-  student.csv
-
-  ```
-  01	赵雷	1990-01-01	男
-  02	钱电	1990-12-21	男
-  03	孙风	1990-05-20	男
-  04	李云	1990-08-06	男
-  05	周梅	1991-12-01	女
-  06	吴兰	1992-03-01	女
-  07	郑竹	1989-07-01	女
-  08	王菊	1990-01-20	女
-  ```
-
-- 加载数据并覆盖已有数据
-
-  ```sql
-  load data local inpath '/export/servers/hivedatas/student.csv' overwrite into table student;
-  ```
-
-  注：执行完load 后，本地 的/hivedatas/teacher.csv文件会被复制到hive数据库目录中。
-
-- 从**hdfs**文件系统向表中加载数据（需要提前将数据上传到**hdfs**文件系统）
-
-  ```sql
-  #cd /export/servers/hivedatas 
-  #hdfs dfs -mkdir -p /hivedatas 
-  #hdfs dfs -put techer.csv /hivedatas/ 
-  #hive> load data inpath '/hivedatas/techer.csv' into table teacher; 
-  ```
-
-  注：执行完load 后，hdfs 的/hivedatas/teacher.csv文件会被移动（剪切）到hive数据库目录中。
-
-  teacher.csv
-
-  ```
-  01	张三
-  02	李四
-  03	王五
-  ```
-
-### 分区表
-
-在大数据中，最常用的一种思想就是分治，我们可以把大的文件切割划分成一个个的小的文件，这样每次操作一个小的文件就会很容易了，同样的道理，在hive当中也是支持这种思想的，就是我们可以把大的数据，按照每天，或者每小时进行切分成一个个的小的文件，这样去操作小的文件就会容易得多了 。
-
-#### 创建分区表语法
-
-```sql
-create table score(s_id string,c_id string, s_score int) partitioned by (month string) row format delimited fields terminated by '\t'
-```
-
-#### 创建一个表带多个分区 
-
-```sql
-create table score2 (s_id string,c_id string, s_score int) partitioned by (year string,month string,day string) row format delimited fields terminated by '\t'
-```
-
-#### 加载数据到分区表中 
-
-```sql
-load data local inpath '/export/servers/hivedatas/score.csv' into table score partition (month='202003');
-```
-
-注：上面操作会将表文件数据加载到hive数据库目录 `month=202003`文件夹中
-
-score.csv
-
-```
-01	01	80
-01	02	90
-01	03	99
-02	01	70
-02	02	60
-02	03	80
-03	01	80
-03	02	80
-03	03	80
-04	01	50
-04	02	30
-04	03	20
-05	01	76
-05	02	87
-06	01	31
-06	03	34
-07	02	89
-07	03	98
-```
-
-#### 加载数据到多分区表中
-
-```sql
-load data local inpath '/export/servers/hivedatas/score.csv' into table score2 partition(year='2020',month='03',day='01');
-```
-
-注：上面操作会将表文件数据加载  `/year=2020/month=03/day=01 `文件夹中
-
-多分区表联合查询(使用 union all ) 
-
-#### 多分区表联合查询(使用 union all ) 
-
-```sql
-select * from score where month = '202002' union all select * from score where month = '202003';
-```
-
-#### 查看分区 
-
-```sql
-show partitions score;
-```
-
-#### 添加一个分区 
-
-``` sql
-alter table score add partition(month='202003'); 
-```
-
-#### 删除分区 
-
-```sql
-alter table score drop partition(month = '202003')
-```
-
-
-
-### 分桶表 
-
-将数据按照指定的字段进行分成多个桶中去，说白了就是将数据按照字段进行划分，可以将数据按照字段划分到多个文件当中去 。
-
-#### 开启 Hive 的分桶功能 
+#### MySQL的安装
 
 ```shell
-set hive.enforce.bucketing=true; 
+#卸载Centos7自带mariadb
+rpm -qa|grep mariadb
+mariadb-libs-5.5.64-1.el7.x86_64
+rpm -e mariadb-libs-5.5.64-1.el7.x86_64 --nodeps
+
+#创建mysql安装包存放点
+mkdir /export/software/mysql
+#上传mysql-5.7.29安装包到上述文件夹下、解压
+tar xvf mysql-5.7.29-1.el7.x86_64.rpm-bundle.tar
+
+#执行安装
+yum -y install libaio
+rpm -ivh mysql-community-common-5.7.29-1.el7.x86_64.rpm mysql-community-libs-5.7.29-1.el7.x86_64.rpm mysql-community-client-5.7.29-1.el7.x86_64.rpm mysql-community-server-5.7.29-1.el7.x86_64.rpm
+
+#初始化mysql
+mysqld --initialize
+#更改所属组
+chown mysql:mysql /var/lib/mysql -R
+
+#启动mysql
+systemctl start mysqld.service
+#查看生成的临时root密码
+grep 'temporary password' /var/log/mysqld.log
+#这行日志的最后就是随机生成的临时密码
+[Note] A temporary password is generated for root@localhost: o+TU+KDOm004
+
+#修改mysql root密码、授权远程访问
+mysql -u root -p
+Enter password:     #这里输入在日志中生成的临时密码
+
+#更新root密码  设置为hadoop
+mysql> alter user user() identified by "hadoop";
+Query OK, 0 rows affected (0.00 sec)
+#授权
+mysql> use mysql;
+mysql> GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' IDENTIFIED BY 'hadoop' WITH GRANT OPTION;
+mysql> FLUSH PRIVILEGES;
+
+#mysql的启动和关闭 状态查看
+systemctl stop mysqld
+systemctl status mysqld
+systemctl start mysqld
+
+#建议设置为开机自启动服务
+systemctl enable  mysqld
+
+#查看是否已经设置自启动成功
+systemctl list-unit-files | grep mysqld
 ```
 
-#### 设置 Reduce 个数
+#### Hive 安装
 
 ```shell
-set mapreduce.job.reduces=3; # 默认-1：不限制
-```
+# 上传解压安装包
+cd /export/server/
+tar zxvf apache-hive-3.1.2-bin.tar.gz
+mv apache-hive-3.1.2-bin hive
 
-#### 创建桶表 
+#解决hadoop、hive之间guava版本差异
+cd /export/server/hive
+rm -rf lib/guava-19.0.jar
+cp /export/server/hadoop-3.1.4/share/hadoop/common/lib/guava-27.0-jre.jar ./lib/
 
-```sql
-create table course (c_id string,c_name string,t_id string) clustered by(c_id) into 3 buckets row format delimited fields terminated by '\t'
-```
+#添加mysql jdbc驱动到hive安装包lib/文件下
+mysql-connector-java-5.1.32.jar
 
-桶表的数据加载，由于通标的数据加载通过 hdfs dfs -put 文件或者通过 load data 均不好使，只能通过 insert overwrite 
-
-创建普通表，并通过insert overwrite的方式将普通表的数据通过查询的方式加载到桶表当中去 
-
-创建普通表（中间表）
-
-```sql
-create table course_common (c_id string,c_name string,t_id string) row format delimited fields terminated by '\t'
-```
-
-普通表中加载数据
-
-```sql
-load data local inpath '/export/servers/hivedatas/course.csv' into table course_common;
-```
-
-course.csv
+#修改hive环境变量文件 添加Hadoop_HOME
+cd /export/server/hive/conf/
+mv hive-env.sh.template hive-env.sh
+vim hive-env.sh
+export HADOOP_HOME=/export/server/hadoop-3.1.4
+export HIVE_CONF_DIR=/export/server/hive/conf
+export HIVE_AUX_JARS_PATH=/export/server/hive/lib
 
 ```
-01	语文	02
-02	数学	01
-03	英语	03
+
+
+
+#### Hive-site.xml
+
+```shell
+#新增hive-site.xml 配置mysql等相关信息
+vim hive-site.xml
 ```
 
-通过insert overwrite给桶表中加载数据
+```xml
+<configuration>
+    <!-- 存储元数据mysql相关配置 -->
+    <property>
+        <name>javax.jdo.option.ConnectionURL</name>
+        <value> jdbc:mysql://master:3306/hive?createDatabaseIfNotExist=true&amp;useSSL=false&amp;useUnicode=true&amp;characterEncoding=UTF-8</value>
+    </property>
 
-```sql
-insert overwrite table course select * from course_common cluster by(c_id);
+    <property>
+        <name>javax.jdo.option.ConnectionDriverName</name>
+        <value>com.mysql.jdbc.Driver</value>
+    </property>
+
+    <property>
+        <name>javax.jdo.option.ConnectionUserName</name>
+        <value>root</value>
+    </property>
+
+    <property>
+        <name>javax.jdo.option.ConnectionPassword</name>
+        <value>hadoop</value>
+    </property>
+
+    <!-- H2S运行绑定host -->
+    <property>
+        <name>hive.server2.thrift.bind.host</name>
+        <value>node1</value>
+    </property>
+
+    <!-- 远程模式部署metastore 服务地址 -->
+    <property>
+        <name>hive.metastore.uris</name>
+        <value>thrift://master:9083</value>
+    </property>
+
+    <!-- 关闭元数据存储授权  -->
+    <property>
+        <name>hive.metastore.event.db.notification.api.auth</name>
+        <value>false</value>
+    </property>
+    <!-- 关闭元数据存储版本的验证 -->
+    <property>
+        <name>hive.metastore.schema.verification</name>
+        <value>false</value>
+    </property>
+</configuration>
 ```
 
-注：最终在hive数据库目录中文件会被分割为三份
-
-![](./img/cluste.jpg)
-
-### 修改表 
-
-#### 重命名
-
-基本语法： 
-
-```sql
-alter table old_table_name rename to new_table_name; 
+```shell
+# 初始化metadata
+cd /export/server/hive
+bin/schematool -initSchema -dbType mysql -verbos
+# 初始化成功会在mysql中创建74张表
 ```
 
-把表score4修改成score5 
+![image-20210816221912983](./img/image-20210816221912983.png)
 
-```sql
-alter table score4 rename to score5
+如果在远程模式下，直接运行hive服务，在执行操作的时候会报错，错误信息如下：
+
+![image-20210816212725723](./img/image-20210816212725723.png)
+
+> 注意：
+>
+> 在远程模式下，必须首先启动Hive metastore服务才可以使用hive。
+>
+> 因为metastore服务和hive server是两个单独的进程了。
+
+
+
+#### 手动启动 Metastore
+
+后台启动的输出日志信息，在/root目录下，nohup.out。
+
+```shell
+#前台启动  关闭ctrl+c
+/export/server/hive/bin/hive --service metastore
+
+#前台启动开启debug日志
+/export/server/hive/bin/hive --service metastore --hiveconf hive.root.logger=DEBUG,console
+
+#后台启动 进程挂起  关闭使用jps + kill
+#输入命令回车执行 再次回车 进程将挂起后台
+nohup /export/server/hive/bin/hive --service metastore --hiveconf hive.root.logger=DEBUG,console &
 ```
 
-#### 增加**/**修改列信息 
+![image-20210816222505844](img/image-20210816222505844.png)
 
-- 查询表结构
 
-  ```sql
-  desc score5; 
+
+## Hive 客户端使用
+
+![image-20210816223059715](./img/image-20210816223059715.png)
+
+Hive发展至今，总共历经了两代客户端工具。
+
+- 第一代客户端（deprecated不推荐使用）：**$HIVE_HOME/bin/hive,** 是一个 shellUtil。主要功能：一是可用于以交互或批处理模式运行Hive查询；二是用于Hive相关服务的启动，比如metastore服务。
+
+- 第二代客户端（recommended 推荐使用）：**$HIVE_HOME/bin/beeline**，是一个JDBC客户端，是**官方强烈推荐**使用的Hive命令行工具，和第一代客户端相比，性能加强安全性提高。
+
+<img src="./img/image-20210816222848104.png" alt="image-20210816222848104" style="zoom:50%;" />
+
+### Hive Beeline Client
+
+Beeline在嵌入式模式和远程模式下均可工作。
+
+在嵌入式模式下，它运行嵌入式 Hive(类似于Hive Client)；而**远程模式下beeline通过 Thrift 连接到单独的 HiveServer2服务**上，这也是官方推荐在生产环境中使用的模式。
+
+那么问题来了，HiveServer2是什么？HiveServer1哪里去了？
+
+### HiveServer、HiveServer2服务
+
+HiveServer、HiveServer2都是Hive自带的两种服务，允许客户端在不启动CLI（命令行）的情况下对Hive中的数据进行操作，且两个都允许远程客户端使用多种编程语言如java，python等向hive提交请求，取回结果。
+
+但是，HiveServer不能处理多于一个客户端的并发请求。因此在Hive-0.11.0版本中重写了HiveServer代码得到了HiveServer2，进而解决了该问题。HiveServer已经被废弃。
+
+HiveServer2支持**多客户端**的**并发**和**身份认证**，旨在为开放API客户端如JDBC、ODBC提供更好的支持。
+
+### 关系梳理
+
+HiveServer2通过Metastore服务读写元数据。所以在远程模式下，启动HiveServer2之前必须先**首先启动metastore服务**。
+
+特别注意：远程模式下，Beeline客户端只能通过HiveServer2服务访问Hive。而bin/hive是通过Metastore服务访问的。具体关系如下：
+
+![image-20210816223436187](./img/image-20210816223436187.png)
+
+### 具体使用
+
+- **bin/hive 客户端**
+
+  在hive安装包的bin目录下，有hive提供的第一代客户端 bin/hive。该客户端可以访问hive的metastore服务，从而达到操作hive的目的。
+
+  友情提示：**如果您是远程模式部署，请手动启动运行metastore服务**。如果是内嵌模式和本地模式，直接运行bin/hive，metastore服务会内嵌一起启动。
+
+  可以直接在启动Hive metastore服务的机器上使用bin/hive客户端操作，此时不需要进行任何配置。
+
+  ```shell
+  #远程模式 首先启动metastore服务
+  /export/server/hive/bin/hive --service metastore
+  
+  #克隆CRT会话窗口 使用hive client连接
+  /export/server/hive/bin/hive
   ```
 
-- 添加列
+  如果需要在其他机器上通过bin/hive访问hive metastore服务，只需要在该机器的hive-site.xml配置中添加metastore服务地址即可。
 
-  ```sql
-  alter table score5 add columns (mycol string, mysco string);
+  ```shell
+  #上传hive安装包到另一个机器上，比如node3：
+  cd /export/server/
+  tar zxvf apache-hive-3.1.2-bin.tar.gz
+  mv apache-hive-3.1.2-bin hive
+  
+  #解决hadoop、hive之间guava版本差异
+  cd /export/server/hive/
+  rm -rf lib/guava-19.0.jar
+  cp /export/server/hadoop-3.1.4/share/hadoop/common/lib/guava-27.0-jre.jar ./lib/
+  
+  #修改hive环境变量文件 添加Hadoop_HOME
+  cd /export/server/hive/conf
+  mv hive-env.sh.template hive-env.sh
+  vim hive-env.sh
+  export HADOOP_HOME=/export/server/hadoop-3.1.4
+  
+  #添加metastore服务地址
+  cd /export/server/hive/conf/
+  vim  hive-site.xml
   ```
 
-- 更新列 
-
-  ```sql
-  alter table score5 change column mysco mysconew int;
+  ```xml
+  <configuration>
+  	<property>
+      <name>hive.metastore.uris</name>
+      <value>thrift://node1:9083</value>
+  	</property>
+  </configuration>
   ```
 
   
 
-### 删除表 
+- **bin/beeline 客户端**
 
-```sql
-drop table score5;
-```
+  hive经过发展，推出了第二代客户端beeline，但是beeline客户端不是直接访问metastore服务的，而是需要单独启动hiveserver2服务。
 
+  在hive安装的服务器上，**首先启动metastore服务，然后启动hiveserver2服务**。
 
-
-### **hive **表中加载数据
-
-#### 直接向分区表中插入数据
-
-```sql
-create table score3 like score;
-insert into table score3 partition(month ='202003') values ('001','002','100');
-```
-
-#### 通过查询插入数据
-
-通过load方式加载数据
-
-```sql
-load data local inpath '/export/servers/hivedatas/score.csv' overwrite into table score partition(month ='202003');
-```
-
-通过查询方式加载数据
-
-```sql
-create table score4 like score; insert overwrite table score4 partition(month = '202003') select s_id,c_id,s_score from score;
-```
-
-
-
-## **Hive** 查询语法 
-
-### **SELECT** 
-
-```sql
-SELECT [ALL | DISTINCT] select_expr, select_expr, ... 
-    FROM table_reference 
-    [WHERE where_condition] 
-    [GROUP BY col_list [HAVING condition]] 
-    [CLUSTER BY col_list | [DISTRIBUTE BY col_list] 
-    [SORT BY| ORDER BY col_list] 
-    LIMIT number]
-```
-
-1. order by 会对输入做**全局排序**，因此只有一个reducer，会导致当输入规模较大时，需要较长的计算时间。 
-
-2. sort by **不是全局排序**，其在数据进入reducer前完成排序。因此，如果用sort by进行排序，并且设置 mapred.reduce.tasks>1，则sort by只保证每个reducer的输出有序，不保证全局有序。 
-
-3. distribute by(字段)根据指定的字段将数据分到不同的reducer，且分发算法是hash散列。 
-
-4. cluster by(字段) 除了具有distribute by的功能外，还会对该字段进行排序。 ---> distribute by + sort by 因此，如果分桶和sort字段是同一个时，此时， cluster by = distribute by + sort b
-
-
-
-分桶表的作用：最大的作用是用来提高join操作的效率； 
-
-思考这个问题： select a.id,a.name,b.addr from a join b on a.id = b.id; 
-
-如果a表和b表已经是分桶表，而且分桶的字段是id字段 做这个join操作时，还需要全表做笛卡尔积吗? 
-
-
-
-### 查询语法
-
-#### 全表查询 
-
-```sql
-select * from score; 
-```
-
-#### 选择特定列 
-
-```sql
-select s_id ,c_id from score;
-```
-
-#### 列别名 
-
-1）重命名一个列。 
-
-2）便于计算。 
-
-3）紧跟列名，也可以在列名和别名之间加入关键字‘AS
-
-```sql
-select s_id as myid ,c_id from score;
-```
-
-### 常用函数 
-
-#### 求总行数（count）
-
-```sql
-select count(1) from score; 
-```
-
-#### 求分数的最大值（max） 
-
-```sql
-select max(s_score) from score; 
-```
-
-#### 求分数的最小值（min） 
-
-```sql
-select min(s_score) from score; 
-```
-
-#### 求分数的总和（sum） 
-
-```sql
-select sum(s_score) from score; 
-```
-
-#### 求分数的平均值（avg） 
-
-```sql
-select avg(s_score) from score; 
-```
-
-
-
-### LIMIT 语句 
-
-典型的查询会返回多行数据。LIMIT子句用于限制返回的行数。 
-
-```sql
-select * from score limit 3;
-```
-
-
-
-### WHERE 语句 
-
-1. 使用WHERE 子句，将不满足条件的行过滤掉。 
-
-2. WHERE 子句紧随 FROM 子句。 
-
-3. 案例实操 
-
-   查询出分数大于60的数据
-
-   ```sql
-   select * from score where s_score > 60;
-   ```
-
-#### 关系运算符
-
-| 运算符        | 操作         | 描述                                                         |
-| :------------ | :----------- | :----------------------------------------------------------- |
-| A = B         | 所有基本类型 | 如果表达A等于表达B，结果TRUE ，否则FALSE。                   |
-| A != B        | 所有基本类型 | 如果A不等于表达式B表达返回TRUE ，否则FALSE。                 |
-| A < B         | 所有基本类型 | TRUE，如果表达式A小于表达式B，否则FALSE。                    |
-| A <= B        | 所有基本类型 | TRUE，如果表达式A小于或等于表达式B，否则FALSE。              |
-| A > B         | 所有基本类型 | TRUE，如果表达式A大于表达式B，否则FALSE。                    |
-| A >= B        | 所有基本类型 | TRUE，如果表达式A大于或等于表达式B，否则FALSE。              |
-| A IS NULL     | 所有类型     | TRUE，如果表达式的计算结果为NULL，否则FALSE。                |
-| A IS NOT NULL | 所有类型     | FALSE，如果表达式A的计算结果为NULL，否则TRUE。               |
-| A LIKE B      | 字符串       | TRUE，如果字符串模式A匹配到B，否则FALSE。                    |
-| A RLIKE B     | 字符串       | NULL，如果A或B为NULL；TRUE，如果A任何子字符串匹配Java正则表达式B；否则FALSE。 |
-| A REGEXP B    | 字符串       | 等同于RLIKE.                                                 |
-
-- 查询分数等于80的所有的数据
-
-  ```sql
-  select * from score where s_score = 80; 
+  ```shell
+  #先启动metastore服务 然后启动hiveserver2服务
+  nohup /export/server/hive/bin/hive --service metastore &
+  nohup /export/server/hive/bin/hive --service hiveserver2 &
   ```
 
-- 查询分数在80到100的所有数据
+  Beeline是JDBC的客户端，通过JDBC协议和Hiveserver2服务进行通信，协议的地址是：`jdbc:hive2://node1:10000`
 
-  ```sql
-  select * from score where s_score between 80 and 100; 
+  ```shell
+  [root@node3 ~]# /export/server/hive/bin/beeline 
+  Beeline version 3.1.2 by Apache Hive
+  beeline> ! connect jdbc:hive2://node1:10000
+  Connecting to jdbc:hive2://node1:10000
+  Enter username for jdbc:hive2://node1:10000: root
+  Enter password for jdbc:hive2://node1:10000: 
+  Connected to: Apache Hive (version 3.1.2)
+  Driver: Hive JDBC (version 3.1.2)
+  Transaction isolation: TRANSACTION_REPEATABLE_READ
+  0: jdbc:hive2://node1:10000> 
   ```
 
-- 查询成绩为空的所有数据
+  ![image-20210816225055505](./img/image-20210816225055505.png)
 
-  ```sql
-  select * from score where s_score is null;
-  ```
 
-- 查询成绩是80和90的数据
 
-  ```sql
-  select * from score where s_score in(80,90);
-  ```
+## 使用体验
 
-#### **LIKE** 和 **RLIKE** 
+### Hive使用起来和MySQL差不多吗？
 
-- 使用LIKE运算选择类似的值 
+对于初次接触Apache Hive的人来说，最大的疑惑就是：Hive 从数据模型看起来和关系型数据库MySQL等好像。包括Hive SQL也是一种类SQL语言。那么实际使用起来如何？ 
 
-- 选择条件可以包含字符或数字:
+#### 过程
 
-  % 代表零个或多个字符(任意个字符)。 
-
-  _ 代表一个字符。 
-
-- RLIKE 子句是Hive中这个功能的一个扩展，其可以通过Java的正则表达式这个更强大的语言来指定匹配条件。
-
-案例实操 :
-
-1. 查找以8开头的所有成绩 
-
-   ```sql
-   select * from score where s_score like '8%'; 
-   ```
-
-2. 查找第二个数值为9的所有成绩数据
-
-   ```sql
-   select * from score where s_score like '_9%'; 
-   ```
-
-3. 查找成绩中含9的所有成绩数据
-
-   ```sql
-   select * from score where s_score rlike '[9]'; #等价于like '%9%'
-   ```
-
-   
-
-#### 逻辑运算符
-
-| 运算符   | 操作    | 描述                                      |
-| :------- | :------ | :---------------------------------------- |
-| A AND B  | boolean | TRUE，如果A和B都是TRUE，否则FALSE。       |
-| A && B   | boolean | 类似于 A AND B.                           |
-| A OR B   | boolean | TRUE，如果A或B或两者都是TRUE，否则FALSE。 |
-| A \|\| B | boolean | 类似于 A OR B.                            |
-| NOT A    | boolean | TRUE，如果A是FALSE，否则FALSE。           |
-| !A       | boolean | 类似于 NOT A.                             |
-
-- 查询成绩大于80，并且s_id是01的数据
-
-  ```sql
-  select * from score where s_score >80 and s_id = '01'; 
-  ```
-
-- 查询成绩大于80，或者s_id 是01的数 
-
-  ```sql
-  select * from score where s_score > 80 or s_id = '01'; 
-  ```
-
-- 查询s_id 不是 01和02的学生 
-
-  ```sql
-  select * from score where s_id not in ('01','02')
-  ```
-
-### 分组 
-
-#### **GROUP BY** 语句
-
-GROUP BY语句通常会和聚合函数一起使用，按照一个或者多个列队结果进行分组，然后对每个组执行聚合操作。 
-
-案例实操： 
-
-- 计算每个学生的平均分数 
-
-  ```sql
-  select s_id ,avg(s_score) from score group by s_id; 
-  ```
-
-- 计算每个学生最高成绩 
-
-  ```sql
-  select s_id ,max(s_score) from score group by s_id; 
-  ```
-
-#### **HAVING** 语句 
-
-- having 与 where不同点 
-
-  1. where针对表中的列发挥作用，查询数据；having针对查询结果中的列发挥作用，筛选数据。 
-
-  2. where后面不能写分组函数，而having后面可以使用分组函数。 
-
-  3. having只用于group by分组统计语句。 
-
-- 案例实操：
-
-  - 求每个学生的平均分数 
-
-    ```sql
-    select s_id ,avg(s_score) from score group by s_id;
-    ```
-
-  - 求每个学生平均分数大于85的人 
-
-    ```sql
-    select s_id ,avg(s_score) avgscore from score group by s_id having avgscore > 85;
-    ```
-
-    
-
-### **JOIN** 语句 
-
-#### 等值 **JOIN** 
-
-Hive支持通常的SQL JOIN语句，但是只支持等值连接，不支持非等值连接。 
-
-案例操作: 查询分数对应的姓名 
+按照MySQL的思维，在hive中创建、切换数据库，创建表并执行插入数据操作，最后查询是否插入成功。
 
 ```sql
-SELECT s.s_id,s.s_score,stu.s_name,stu.s_birth FROM score s LEFT JOIN student stu ON s.s_id = stu.s_id;
+--创建数据库
+create database itcast;
+--列出所有数据库
+show databases;
+--切换数据库
+use itcast;
+--建表
+create table t_student(id int,name varchar(255));
+--插入一条数据
+insert into table t_student values(1,"allen1");
+--查询表数据
+select * from t_student;
 ```
 
-#### 内连接 
+在执行插入数据的时候，发现**插入速度极慢，sql执行时间很长**，为什么？
 
-内连接：只有进行连接的两个表中都存在与连接条件相匹配的数据才会被保留下来。 
+![image-20210816235350657](./img/image-20210816235350657.png)
+
+最终插入一条数据，历史30秒的时间。查询表数据，显示数据插入成功
+
+![image-20210816235403045](./img/image-20210816235403045.png)
+
+
+
+#### 验证
+
+首先登陆Hadoop YARN上观察是否有MapReduce任务执行痕迹。
+
+```http
+YARN Web UI: http://resourcemanager_host:8088/
+```
+
+![image-20210816235419160](./img/image-20210816235419160.png)
+
+
+
+然后登陆Hadoop HDFS浏览文件系统，根据Hive的数据模型，表的数据最终是存储在HDFS和表对应的文件夹下的。
+
+```http
+HDFS Web UI: http://namenode_host:9870/
+```
+
+![image-20210816235430014](./img/image-20210816235430014.png)
+
+#### 结论
+
+- Hive SQL语法show和标准SQL很类似,使得学习成本降低不少。
+- Hive底层是通过MapReduce执行的数据插入动作,所以速度慢。
+- 如果大数据集这么一条一条插入的话是非常不现实的，成本极高。
+- Hive应该具有自己特有的数据插入表方式，结构化文件映射成为表。
+
+
+
+### Hive如何才能将结构化数据映射成为表？
+
+在Hive中，使用insert+values语句插入数据，底层是通过MapReduce执行的，效率十分低下。此时回到Hive的本质上：可以将结构化的数据文件映射成为一张表，并提供基于表的SQL查询分析。
+
+假如，现在有一份结构化的数据文件，如何才能映射成功呢？在映射成功的过程中需要注意哪些问题？
+
+文件存储路径？字段类型？字段顺序？字段之间分隔符？
+
+#### 过程
+
+在HDFS根目录下创建一个结构化数据文件user.txt，里面内容如下：
+
+```txt
+1,zhangsan,18,beijing
+2,lisi,25,shanghai
+3,allen,30,shanghai
+4,woon,15,nanjing
+5,james,45,hangzhou
+6,tony,26,beijing
+```
+
+![image-20210817211931079](./img/image-20210817211931079.png)
+
+在hive中创建一张表t_user。注意：**字段的类型顺序要和文件中字段保持一致。**
 
 ```sql
-select * from techer t inner join course c on t.t_id = c.t_id;
+create table t_user(id int,name varchar(255),age int,city varchar(255));
 ```
 
-#### 左外连接
+#### 验证
 
-左外连接：JOIN操作符左边表中符合WHERE子句的所有记录将会被返回。 查询老师对应的课程 
+执行数据查询操作，发现表中并没有数据。
+
+猜想：**难道数据文件要放置在表对应的HDFS路径下才可以成功？**
+
+![image-20210817212034442](./img/image-20210817212034442.png)
+
+再次执行查询操作，显示如下，都是null：
+
+![image-20210817212054164](./img/image-20210817212054164.png)
+
+表感知到结构化文件的存在，但是并没有正确识别文件中的数据。猜想：还**需要指定文件中字段之间的分隔符**？重建张新表，指定分隔符。
 
 ```sql
-select * from techer t left join course c on t.t_id = c.t_id;
+-建表语句 增加分隔符指定语句
+create table t_user_1(id int,name varchar(255),age int,city varchar(255))
+row format delimited
+fields terminated by ',';
+--关于分隔符语法 后续学习展开
+
+#把user.txt文件从本地文件系统上传到hdfs
+hadoop fs -put user.txt /user/hive/warehouse/itcast.db/t_user_1/
+
+--执行查询操作
+select * from t_user_1;
 ```
 
-#### 右外连接 
+![image-20210817212133447](./img/image-20210817212133447.png)
 
-右外连接：JOIN操作符右边表中符合WHERE子句的所有记录将会被返回。 
-
-````sql
-select * from teacher t right join course c on t.t_id = c.t_id; 
-````
-
-#### 多表连接 
-
-注意：连接 n个表，至少需要n-1个连接条件。例如：连接三个表，至少需要两个连接条件。 
-
-多表连接查询，查询老师对应的课程，以及对应的分数，对应的学生 
+此时再创建一张表，保存分隔符语法，但是故意使得字段类型和文件中不一致。
 
 ```sql
-select * from teacher t 
-left join course c on t.t_id = c.t_id 
-left join score s on s.c_id = c.c_id 
-left join student stu on s.s_id = stu.s_id;
+-建表语句 增加分隔符指定语句（这里将name转换为 int类型）
+create table t_user_2(id int,name int,age varchar(255),city varchar(255))
+row format delimited
+fields terminated by ',';
+#把user.txt文件从本地文件系统上传到hdfs
+hadoop fs -put user.txt /user/hive/warehouse/itcast.db/t_user_2/
+
+--执行查询操作
+select * from t_user_2;
 ```
 
-大多数情况下，Hive会对每对JOIN连接对象启动一个MapReduce任务。本例中会首先启动一个MapReduce job对表 techer和表course进行连接操作，然后会再启动一个MapReduce job将第一个MapReduce job的输出和score;进行连接操作。 
+![image-20210817212214191](./img/image-20210817212214191.png)
 
+此时发现，有的列显示null，有的列显示正常。
 
+name字段本身是字符串，但是建表的时候指定int，类型转换不成功；age是数值类型，建表指定字符串类型，可以转换成功。说明**hive中具有自带的类型转换功能，但是不一定保证转换成功**。
 
-### 排序 
+#### 结论
 
-#### 全局排序 
+要想在hive中创建表跟结构化文件映射成功，需要注意以下几个方面问题：
 
-Order By：全局排序，只能有一个reduce 
+- **创建表时，字段顺序、字段类型要和文件中保持一致。**
+- 如果类型不一致，hive会尝试转换，但是不保证转换成功。不成功显示null。
+- 文件好像要放置在Hive表对应的HDFS目录下，其他路径可以吗？
+- 建表的时候好像要根据文件内容指定分隔符，不指定可以吗？
 
-1. 使用 ORDER BY 子句排序 
+### 使用Hive进行小数据分析如何？
 
-   ASC（ascend）: 升序（默认） 
+因为Hive是基于HDFS进行文件的存储，所以理论上能够支持的数据存储规模很大，天生适合大数据分析。假如Hive中的数据是小数据，再使用Hive开展分析效率如何呢？
 
-   DESC（descend）: 降序 
+#### 过程
 
-2. ORDER BY 子句在SELECT语句的结尾。 
+之前我们创建好了一张表t_user_1,现在通过Hive SQL找出当中年龄大于20岁的有几个。
 
-案例实操 
+#### 验证
 
-1. 查询学生的成绩，并按照分数降序排列 
-
-   ```sql
-   SELECT * FROM student s LEFT JOIN score sco ON s.s_id = sco.s_id ORDER BY sco.s_score DESC; 
-   ```
-
-2. 查询学生的成绩，并按照分数升序排列 
-
-   ```sql
-   SELECT * FROM student s LEFT JOIN score sco ON s.s_id = sco.s_id ORDER BY sco.s_score asc; 
-   ```
-
-#### 按照别名排序 
-
-按照分数的平均值排序
+发现又是通过MapReduce程序执行的数据查询功能。
 
 ```sql
-select s_id ,avg(s_score) avg from score group by s_id order by avg;
+-- 执行查询操作
+select count(*) from t_user_1 where age > 20;
 ```
 
-#### 多个列排序
+![image-20210819212210672](./img/image-20210819212210672.png)
 
-按照学生id和平均成绩进行排序 
+#### 结论
+
+- Hive底层的确是通过MapReduce执行引擎来处理数据的
+- 执行完一个MapReduce程序需要的时间不短
+- 如果是小数据集，使用hive进行分析将得不偿失，延迟很高
+- 如果是大数据集，使用hive进行分析，底层MapReduce分布式计算，很爽
+
+
+
+## DDL 概述
+
+### DDL 语法的作用
+
+**数据定义语言 (Data Definition Language, DDL)**，是SQL语言集中对数据库内部的对象结构进行创建，删除，修改等的操作语言，这些数据库对象包括database（schema）、table、view、index等。
+
+核心语法由**CREATE、ALTER与DROP**三个所组成。**DDL并不涉及表内部数据的操作。**
+
+在某些上下文中，该术语也称为数据描述语言，因为它描述了数据库表中的字段和记录。
+
+### Hive 中的 DDL 使用
+
+Hive SQL（HQL）与SQL的语法大同小异，基本上是相通的，学过SQL的使用者可以无痛使用Hive SQL。只不过在学习HQL语法的时候，特别要注意Hive自己特有的语法知识点，比如partition相关的DDL操作。
+
+基于Hive的设计、使用特点，**HQL中create语法（尤其create table ）**将是学习掌握DDL语法的重中之重。可以说建表是否成功直接影响数据文件是否映射成功，进而影响后续是否可以基于SQL分析数据。通俗点说，没有表，表没有数据，你分析什么呢？
+
+选择正确的方向,往往比盲目努力重要。
+
+## Hive DDL 建表基础
+
+### 完整的建表语法树
+
+![image-20210819214414052](./img/image-20210819214414052.png)
+
+- **蓝色**字体是建表语法的关键字，用于指定某些功能。
+
+- **[]**中括号的语法表示可选。
+
+- **|** 表示使用的时候，左右语法二选一。
+
+- 建表语句中的语法顺序要和上述语法规则保持一致。
+
+### Hive 数据类型详解
+
+#### 整体概述
+
+Hive数据类型指的是表中列的字段类型；
+
+整体分为两类：**原生数据类型**（primitive data type）和**复杂数据类型**（complex data type）。
+
+原生数据类型包括：数值类型、时间日期类型、字符串类型、杂项数据类型；
+
+复杂数据类型包括：array数组、map映射、struct结构、union联合体。
+
+<img src="./img/image-20210819214739380.png" alt="image-20210819214739380" style="zoom:30%;" />
+
+关于Hive的数据类型，需要注意：
+
+- 英文字母**大小写不敏感**；
+- 除SQL数据类型外，还**支持Java数据类型**，比如：string；
+- **int和string是使用最多的**，大多数函数都支持；
+- 复杂数据类型的使用通常需要和分隔符指定语法配合使用。
+- 如果定义的数据类型和文件不一致，hive会尝试隐式转换，但是不保证成功。
+
+#### 原生数据类型
+
+Hive支持的原生数据类型如下图所示：
+
+![image-20210819215021196](./img/image-20210819215021196.png)
+
+其中标注的数据类型是使用较多的，详细的描述请查询语法手册：
+
+https://cwiki.apache.org/confluence/display/Hive/LanguageManual+Types
+
+#### 复杂数据类型
+
+Hive支持的复杂数据类型如下图所示：
+
+![image-20210819215129362](./img/image-20210819215129362.png)
+
+#### 数据类型隐式、显示转换
+
+##### 隐式转换
+
+与SQL类似，HQL支持隐式和显式类型转换。 
+
+原生类型从窄类型到宽类型的转换称为隐式转换，反之，则不允许。 
+
+下表描述了类型之间允许的隐式转换：
+
+![image-20210819215343715](./img/image-20210819215343715.png)
+
+##### 显示转换
+
+显式类型转换使用**CAST函数**。
+例如，CAST（'100'as INT）会将100字符串转换为100整数值。 
+如果强制转换失败，例如CAST（‘Allen'as INT），该函数返回NULL。
+
+![image-20210819215609837](./img/image-20210819215609837.png)
+
+### Hive 读写文件机制
+
+#### SerDe是什么
+
+SerDe是Serializer、Deserializer的简称，目的是用于序列化和反序列化。
+
+**序列化是对象转化为字节码的过程**；而**反序列化是字节码转换为对象的过程**。
+
+Hive使用SerDe（包括FileFormat）读取和写入表**行对象**。需要注意的是，“key”部分在读取时会被忽略，而在写入时key始终是常数。基本上行对象存储在“value”中。
+
+![image-20210819220042460](./img/image-20210819220042460.png)
+
+
+
+可以通过 `desc formatted tablename`查看表的相关SerDe信息。默认如下：
+
+![image-20210819220423509](./img/image-20210819220423509.png)
+
+#### Hive 读写文件流程
+
+- **Hive读取文件机制**：
+
+  首先调用InputFormat（默认TextInputFormat），返回一条一条kv键值对记录（默认是一行对应一条键值对）。然后调用SerDe（默认LazySimpleSerDe）的Deserializer，将一条记录中的value根据分隔符切分为各个字段。
+
+- **Hive写文件机制**：
+
+  将Row写入文件时，首先调用SerDe（默认LazySimpleSerDe）的Serializer将对象转换成字节序列，然后调用OutputFormat将数据写入HDFS文件中。
+
+#### SerDe相关语法
+
+**ROW FORMAT**这一行所代表的是跟读写文件、序列化SerDe相关的语法，功能有二：
+
+- 使用哪个SerDe类进行序列化；
+
+- 如何指定分隔符。
+
+![image-20210828162954453](./img/image-20210828162954453.png)
+
+其中ROW FORMAT是语法关键字，**DELIMITED**和**SERDE**二选其一。
+
+如果使用**delimited**, 表示使用**默认的LazySimpleSerDe**类来处理数据。
+
+如果数据文件格式比较特殊可以使用**ROW FORMAT SERDE serde_name**指定其他的Serde类来处理数据,甚至支持用户自定义SerDe类。
+
+![image-20210819220943932](./img/image-20210819220943932.png)
+
+#### LazySimpleSerDe分隔符指定
+
+LazySimpleSerDe是Hive默认的序列化类，包含4种子语法， 分别用于指定字段之间、集合元素之间、map映射 kv之间、换行的分隔符号。
+
+在建表的时候可以根据数据的特点灵活搭配使用。
+
+![image-20210819221109966](./img/image-20210819221109966.png)
+
+#### Hive默认分隔符
+
+Hive建表时如果没有row format语法指定分隔符，则采用默认分隔符；
+
+**默认的分割符是'\001'**，是一种特殊的字符，使用的是ASCII编码的值，键盘是打不出来的。
+
+![image-20210819221258939](./img/image-20210819221258939.png)
+
+在vim编辑器中，连续按下Ctrl+v/Ctrl+a即可输入'\001' ，显示^A
+
+![image-20210819221405672](./img/image-20210819221405672.png)
+
+在一些文本编辑器中将以SOH的形式显示：
+
+![image-20210819221425453](./img/image-20210819221425453.png)
+
+### Hive数据存储路径
+
+#### 默认存储路径
+
+- Hive表默认存储路径是由 `${HIVE_HOME}/conf/hive-site.xml`配置文件的`hive.metastore.warehouse.dir`属性指定，默认值是：`/user/hive/warehouse`。
+
+![image-20210819221621347](./img/image-20210819221621347.png)
+
+- 在该路径下，文件将根据所属的库、表，有规律的存储在对应的文件夹下。
+
+![image-20210819221848093](./img/image-20210819221848093.png)
+
+#### 指定存储路径
+
+- 在Hive建表的时候，可以**通过 location 语法来更改数据在HDFS上的存储路径**，使得建表加载数据更加灵活方便。
+
+- 语法：LOCATION '<hdfs_location>'。
+
+- 对于已经生成好的数据文件，使用location指定路径将会很方便。
+
+![image-20210819221951614](./img/image-20210819221951614.png)
+
+### 案例-数据Hive建表映射
+
+#### 原生数据类型案例
+
+文件archer.txt中记录了手游《王者荣耀》射手的相关信息，内容如下所示，其中**字段之间分隔符为制表符\t**,要求在Hive中建表映射成功该文件。
+
+```txt
+1	后羿	5986	1784	396	336	remotely	archer
+2	马可波罗	5584	200	362	344	remotely	archer
+3	鲁班七号	5989	1756	400	323	remotely	archer
+4	李元芳	5725	1770	396	340	remotely	archer
+5	孙尚香	6014	1756	411	346	remotely	archer
+6	黄忠	5898	1784	403	319	remotely	archer
+7	狄仁杰	5710	1770	376	338	remotely	archer
+8	虞姬	5669	1770	407	329	remotely	archer
+9	成吉思汗	5799	1742	394	329	remotely	archer
+10	百里守约	5611	1784	410	329	remotely	archer	assassin
+```
+
+字段含义：id、name（英雄名称）、hp_max（最大生命）、mp_max（最大法力）、attack_max（最高物攻）、defense_max（最大物防）、attack_range（攻击范围）、role_main（主要定位）、role_assist（次要定位）。
+
+分析一下：字段都是基本类型，字段的顺序需要注意一下。字段之间的分隔符是制表符，需要使用row format语法进行指定。
+
+**建表语句：**
 
 ```sql
-select s_id ,avg(s_score) avg from score group by s_id order by s_id,avg; 
+-- 创建数据库并切换使用
+create database honor_of_kings;
+use honor_of_kings;
+
+-- ddl create table
+create table t_archer(
+    id int comment "ID",
+    name string comment "英雄名称",
+    hp_max int comment "最大生命",
+    mp_max int comment "最大法力",
+    attack_max int comment "最高物攻",
+    defense_max int comment "最大物防",
+    attack_range string comment "攻击范围",
+    role_main string comment "主要定位",
+    role_assist string comment "次要定位"
+) comment "王者荣耀射手信息"
+row format delimited fields terminated by "\t";
+
+show tables;
 ```
 
-#### 每个**MapReduce**内部排序（**Sort By**）局部排序 
-
-Sort By：每个MapReduce内部进行排序，对全局结果集来说不是排序。 
-
-1. 设置reduce个数 
-
-   ```shell
-   #hive> set mapreduce.job.reduces=3; 
-   ```
-
-2. 查看设置reduce个数 
-
-   ``` shell
-   #hive> set mapreduce.job.reduces;
-   ```
-
-3. 查询成绩按照成绩降序排列 
-
-   ```sql
-   select * from score sort by s_score; 
-   ```
-
-4. 将查询结果导入到文件中（按照成绩降序排列） 
-
-   ```sql
-   insert overwrite local directory '/export/servers/hivedatas/sort' select * from score sort by s_score;
-   ```
-
-
-
-#### 分区排序（**DISTRIBUTE BY**）
-
-Distribute By：类似MR中partition，进行分区，结合sort by使用。 
-
-注意，Hive要求DISTRIBUTE BY语句要写在SORT BY语句之前。 
-
-对于distribute by进行测试，一定要分配多reduce进行处理，否则无法看到distribute by的效果。 
-
-案例实操：先按照学生id进行分区，再按照学生成绩进行排序。 
-
-1. 设置reduce的个数，将我们对应的s_id划分到对应的reduce当中去 
-
-   ```shell
-   #hive> set mapreduce.job.reduces=7; 
-   ```
-
-2. 通过distribute by 进行数据的分区 
-
-   ```sql
-   insert overwrite local directory '/export/servers/hivedatas/sort' select * from score distribute by s_id sort by s_score;
-   ```
-
-   
-
-
-#### 分桶排序（**CLUSTER BY** ）
-
-当distribute by和sort by字段相同时，可以使用cluster by方式。cluster by除了具有distribute by的功能外还兼具sort by的功能。但是排序只能是倒序排序，不能指定排序规则为ASC 或者DESC。 
-
-以下两种写法等价 
-
-```sql
-select * from score cluster by s_id; 
-select * from score distribute by s_id sort by s_id; 
-```
-
-
-
-## **Hive** 函数
-
-### 内置函数
-
-内容较多，见《Hive官方文档》 https://cwiki.apache.org/confluence/display/Hive/LanguageManual+UDF 
-
-#### 查看系统自带的函数 
+建表成功之后，在Hive的默认存储路径下就生成了表对应的文件夹，把archer.txt文件上传到对应的表文件夹下。
 
 ```shell
-#hive> show functions; 
+hadoop fs -put archer.txt  /user/hive/warehouse/honor_of_kings.db/t_archer
 ```
 
-#### 显示自带的函数的用法 
+执行查询操作，可以看出数据已经映射成功。
+
+```sql
+select * from t_archer;
+```
+
+![image-20210828165159057](./img/image-20210828165159057.png)
+
+**总结：**
+
+核心语法：row format delimited fields terminated by 指定字段之间的分隔符
+
+> 想一想：Hive这种直接映射文件的能力是不是比mysql一条一条insert插入数据方便多了？
+
+#### 复杂数据类型案例
+
+文件hot_hero_skin_price.txt中记录了手游《王者荣耀》热门英雄的相关皮肤价格信息，内容如下,要求在Hive中建表映射成功该文件。
+
+```txt
+1,孙悟空,53,西部大镖客:288-大圣娶亲:888-全息碎片:0-至尊宝:888-地狱火:1688
+2,鲁班七号,54,木偶奇遇记:288-福禄兄弟:288-黑桃队长:60-电玩小子:2288-星空梦想:0
+3,后裔,53,精灵王:288-阿尔法小队:588-辉光之辰:888-黄金射手座:1688-如梦令:1314
+4,铠,52,龙域领主:288-曙光守护者:1776
+5,韩信,52,飞衡:1788-逐梦之影:888-白龙吟:1188-教廷特使:0-街头霸王:888
+```
+
+字段：id、name（英雄名称）、win_rate（胜率）、skin_price（皮肤及价格）
+
+分析一下：前3个字段原生数据类型、最后一个字段复杂类型map。需要指定**字段之间分隔符**、**集合元素之间分隔符**、**map kv之间分隔符**。
+
+**建表语句：**
+
+```sql
+create table t_hot_hero_skin_price(
+    id int,
+    name string,
+    win_rate int,
+    skin_price map<string,int>
+)
+row format delimited
+fields terminated by ',' -- 字段之间分隔符
+collection items terminated by '-' -- 集合元素之间分隔符
+map keys terminated by ':' ; -- 集合元素kv之间分隔符
+```
+
+建表成功后，把hot_hero_skin_price.txt文件上传到对应的表文件夹下。
 
 ```shell
-#hive> desc function upper; 
+hadoop fs -put hot_hero_skin_price.txt /user/hive/warehouse/honor_of_kings.db/t_hot_hero_skin_price
 ```
 
-#### 详细显示自带的函数的用法 
+执行查询操作，可以看出数据已经映射成功。
+
+```sql
+select * from t_hot_hero_skin_price;
+```
+
+![image-20210828170058133](./img/image-20210828170058133.png)
+
+> 想一想：如果最后一个字段以String类型来定义，后续使用方便吗？
+
+#### 默认分隔符案例
+
+文件team_ace_player.txt中记录了手游《王者荣耀》主要战队内最受欢迎的王牌选手信息，内容如下,要求在Hive中建表映射成功该文件。
+
+![image-20210828170459981](./img/image-20210828170459981.png)
+
+字段：id、team_name（战队名称）、ace_player_name（王牌选手名字）
+
+分析一下：数据都是原生数据类型，且字段之间分隔符是\001，因此在建表的时候可以省去row format语句，因为hive默认的分隔符就是\001。
+
+**建表语句：**
+
+```sql
+create table t_team_ace_player(
+    id int,
+    team_name string,
+    ace_player_name string
+);
+```
+
+建表成功后，把team_ace_player.txt文件上传到对应的表文件夹下。
 
 ```shell
-#hive> desc function extended upper; 
+hadoop fs -put team_ace_player.txt /user/hive/warehouse/honor_of_kings.db/t_team_ace_player
 ```
 
-#### 常用内置函数 
+执行查询操作，可以看出数据已经映射成功。
 
-- 字符串连接函数： concat 
+![image-20210828170848408](./img/image-20210828170848408.png)
+
+> 想一想：字段以\001分隔建表时很方便，那么采集、清洗数据时对数据格式追求有什么启发？你青睐于什么分隔符？
+>
+> 优先考虑\001分隔符
+
+#### 指定数据存储路径
+
+文件team_ace_player.txt中记录了手游《王者荣耀》主要战队内最受欢迎的王牌选手信息，字段之间使用的是\001作为分隔符。
+
+<img src="./img/image-20210828172027396.png" alt="image-20210828172027396" style="zoom:50%;" />
+
+要求把文件上传到**HDFS任意路径**下，不能移动复制，并在Hive中建表映射成功该文件。
+
+```shell
+hadoop fs -put team_ace_player.txt /data
+```
+
+![image-20210828172417542](./img/image-20210828172417542.png)
+
+**建表语句：**
+
+```sql
+create table t_team_ace_player_location(
+    id int,
+    team_name string,
+    ace_player_name string
+)
+location '/data';
+```
+
+<img src="./img/image-20210828172331638.png" alt="image-20210828172331638" style="zoom:50%;" />
+
+## Hive DDL 建表高级
+
+### Hive 内、外部表
+
+![image-20210828172548514](./img/image-20210828172548514.png)
+
+#### 什么是内部表
+
+**内部表（Internal table）**也称为被Hive拥有和管理的**托管表（Managed table）**。
+
+默认情况下创建的表就是内部表，Hive拥有该表的结构和文件。换句话说，Hive完全管理表（元数据和数据）的生命周期，类似于RDBMS中的表。
+
+当您**删除内部表**时，它**会删除数据以及表的元数据**。
+
+```sql
+-- 默认情况下 创建的表就是内部表
+create table student(
+    num int,
+    name string,
+    sex string,
+    age int,
+    dept string) 
+row format delimited 
+fields terminated by ',';
+```
+
+可以使用 DESCRIBE FORMATTED tablename 来获取表的描述信息，从中可以看出表的类型。
+
+![image-20210828173325790](./img/image-20210828173325790.png)
+
+#### 什么是外部表
+
+**外部表（External table）**中的数据**不是Hive拥有或管理**的，**只管理**表**元数据**的生命周期。
+
+要创建一个外部表，需要使用**EXTERNAL**语法关键字。
+
+删除外部表**只会删除元数据**，而**不会删除实际数据**。在Hive外部仍然可以访问实际数据。
+
+实际场景中，外部表**搭配location语法指定数据**的路径，可以让数据更安全。
+
+```sql
+-- 创建外部表 需要关键字 external
+-- 外部表数据存储路径不指定 默认规则和内部表一直
+-- 也可以使用 location 关键字指定 HDFS 任意路径
+create external table student_ext(   
+    num int,   
+    name string,   
+    sex string,   
+    age int,   
+    dept string)
+    row format delimited
+        fields terminated by ','
+    location '/stu';
+```
+
+可以使用DESCRIBE FORMATTED tablename,来获取表的元数据描述信息，从中可以看出表的类型。
+
+![image-20210828174039192](./img/image-20210828174039192.png)
+
+#### 内、外部表差异
+
+无论内部表还是外部表，Hive都在Hive Metastore中管理表定义、字段类型等元数据信息。
+
+删除内部表时，除了会从Metastore中删除表元数据，还会从HDFS中删除其所有数据文件。
+
+删除外部表时，只会从Metastore中删除表的元数据，并保持HDFS位置中的实际数据不变。
+
+![image-20210828174211133](./img/image-20210828174211133.png)
+
+#### 如何选择内部表、外部表
+
+当需要通过Hive完全管理控制表的整个生命周期时，请使用内部表。
+
+当数据来之不易，防止误删，请使用外部表，因为即使删除表，文件也会被保留。
+
+### Hive 分区表
+
+#### 分区表产生的背景
+
+现有6份结构化数据文件，分别记录了《王者荣耀》中6种位置的英雄相关信息。
+
+现要求通过建立一张表t_all_hero，把6份文件同时映射加载。
+
+```sql
+create table t_all_hero(
+    id int,
+    name string,
+    hp_max int,
+    mp_max int,
+    attack_max int,
+    defense_max int,
+    attack_range string,
+    role_main string,
+    role_assist string
+)
+row format delimited
+fields terminated by "\t";
+```
+
+建表并且加载数据文件到HDFS指定路径下
+
+![image-20210828192009342](./img/image-20210828192009342.png)
+
+查看表数据
+
+![image-20210828192355267](./img/image-20210828192355267.png)
+
+现要求查询role_main主要定位是射手并且hp_max最大生命大于6000的有几个，sql语句如下：
+
+```sql
+select count(*) from t_all_hero where role_main="archer" and hp_max >6000;
+```
+
+**思考一下：**
+
+where语句的背后需要进行**全表扫描**才能过滤出结果，对于hive来说需要扫描表下面的每一个文件。如果数据文件特别多的话，效率很慢也没必要。
+
+本需求中，只需要扫描archer.txt文件即可，**如何优化可以加快查询，减少全表扫描呢**？
+
+指定文件扫描和全表扫描，效率还是存在差异的。
+
+#### 分区表的概念和创建
+
+**概念**
+
+当Hive表对应的数据量大、文件个数多时，为了避免查询时全表扫描数据，Hive支持**根据指定的字段对表进行分区**，分区的字段可以是日期、地域、种类等具有标识意义的字段。
+
+比如把一整年的数据根据月份划分12个月（12个分区），后续就可以查询指定月份分区的数据，尽可能避免了全表扫描查询。
+
+![image-20210828192816908](./img/image-20210828192816908.png)
+
+**创建**
+
+![image-20210828193118647](./img/image-20210828193118647.png)
+
+**示例：**
+
+针对《王者荣耀》英雄数据，重新创建一张分区表t_all_hero_part，以role角色作为分区字段。
+
+```sql
+create table t_all_hero_part(
+       id int,
+       name string,
+       hp_max int,
+       mp_max int,
+       attack_max int,
+       defense_max int,
+       attack_range string,
+       role_main string,
+       role_assist string
+) partitioned by (role string)
+row format delimited
+fields terminated by "\t";
+```
+
+需要注意：**分区字段不能是表中已经存在的字段**，因为分区字段最终也会以虚拟字段的形式显示在表结构上。
+
+![image-20210828193622315](./img/image-20210828193622315.png)
+
+#### 分区表数据加载 - 静态分区
+
+所谓**静态分区**指的是**分区的属性值**是由用户在**加载数据的时候手动指定**的。
+
+语法如下：
+
+```sql
+load data [local] inpath 'filepath ' into table tablename partition(分区字段='分区值'...);
+```
+
+- **local**参数用于指定**待加载的数据是位于本地文件系统还是HDFS文件系统**。关于load语句后续详细展开讲解。
+
+静态加载数据操作如下，文件都位于Hive服务器所在机器本地文件系统上。
+
+![image-20210828194525911](./img/image-20210828194525911.png)
+
+```sql
+load data local inpath '/opt/t_all_hero/archer.txt' into table t_all_hero_part partition(role='sheshou');
+load data local inpath '/opt/t_all_hero/assassin.txt' into table t_all_hero_part partition(role='cike');
+load data local inpath '/opt/t_all_hero/mage.txt' into table t_all_hero_part partition(role='fashi');
+load data local inpath '/opt/t_all_hero/support.txt' into table t_all_hero_part partition(role='fuzhu');
+load data local inpath '/opt/t_all_hero/tank.txt' into table t_all_hero_part partition(role='tanke');
+load data local inpath '/opt/t_all_hero/warrior.txt' into table t_all_hero_part partition(role='zhanshi');
+```
+
+执行load命令后，查询表数据
+
+![image-20210828194730218](./img/image-20210828194730218.png)
+
+**思考**
+
+1. 在向Hive分区表加载数据的时候，我们把使用load命令手动指定分区值的方式叫做静态加载，那么有没有动态加载？
+2. 如果创建的分区很多，是否意味着复制粘贴修改很多load命令去执行，效率低。有没有高效的方法？
+
+#### 分区表数据加载 - 动态分区
+
+所谓**动态分区**指的是**分区的字段值是基于查询结果**（参数位置）自动推断出来的。核心语法就是**insert+select**。
+
+启用hive动态分区，需要在hive会话中设置两个参数：
+
+- set hive.exec.dynamic.partition=true; 
+- set hive.exec.dynamic.partition.mode=nonstrict;
+
+第一个参数表示**开启动态分区功能**，第二个参数**指定动态分区的模式**。分为nonstick非严格模式和strict严格模式。**strict严格模式要求至少有一个分区为静态分区**。
+
+创建一张新的分区表，执行动态分区插入。
+
+```sql
+create table t_all_hero_part_dynamic(
+         id int,
+         name string,
+         hp_max int,
+         mp_max int,
+         attack_max int,
+         defense_max int,
+         attack_range string,
+         role_main string,
+         role_assist string
+) partitioned by (role string)
+row format delimited
+fields terminated by "\t";
+```
+
+执行动态分区插入
+
+```sql
+insert into table t_all_hero_part_dynamic partition(role) select tmp.*,tmp.role_main from t_all_hero tmp;
+```
+
+动态分区插入时，分区值是根据查询返回字段位置自动推断的，同时会把数据存放在不同分区HDFS文件夹下面
+
+#### 分区表的本质
+
+外表上看起来分区表好像没多大变化，只不过多了一个分区字段。实际上分区表在底层管理数据的方式发生了改变。这里直接去HDFS查看区别。
+
+![image-20210828195553879](./img/image-20210828195553879.png)
+
+- 分区的概念提供了一种将Hive表数据分离为多个文件/目录的方法。
+
+- 不同分区对应着不同的文件夹，同一分区的数据存储在同一个文件夹下。
+- 查询过滤的时候只需要根据分区值找到对应的文件夹，扫描本文件夹下本分区下的文件即可，避免全表数据扫描。
+- 这种指定分区查询的方式叫做**分区裁剪**。
+
+<img src="./img/image-20210828202322405.png" alt="image-20210828202322405" style="zoom:60%;" />
+
+#### 分区表的使用
+
+分区表的使用重点在于
+
+- 建表时根据业务场景**设置合适的分区字段**。比如日期、地域、类别等；
+- 查询的时候**尽量先使用where进行分区过滤**，查询指定分区的数据，避免全表扫描。
+
+比如：查询英雄主要定位是射手并且最大生命大于6000的个数。使用分区表查询和使用非分区表进行查询，SQL如下，想一想：底层执行性能来说，分区表的优势在哪里？
+
+```sql
+-- 非分区表 全表扫描过滤查询
+select count(*) from t_all_hero where role_main="archer" and hp_max >6000;
+-- 分区表 先基于分区过滤 再查询
+select count(*) from t_all_hero_part where role="sheshou" and hp_max >6000;
+```
+
+#### 多重分区表
+
+通过建表语句中关于分区的相关语法可以发现，Hive支持多个分区字段：
+PARTITIONED BY (partition1 data_type, partition2 data_type,….)。
+
+**多重分区**下，分区之间是一种**递进关系**，可以理解为在前一个分区的基础上继续分区。从HDFS的角度来看就是文件夹下继续划分子文件夹。
+
+![image-20210828202907409](./img/image-20210828202907409.png)
+
+比如：把全国人口数据首先根据省进行分区，然后根据市进行划分，如果你需要甚至可以继续根据区县再划分，此时就是3分区表。
+
+```sql
+-- 单分区表，按省份分区
+create table t_user_province (id int, name string,age int) partitioned by (province string);
+
+-- 双分区表，按省份和市分区
+create table t_user_province_city (id int, name string,age int) partitioned by (province string, city string);
+
+-- 三分区表，按省份、市、县分区
+create table t_user_province_city_county (id int, name string,age int) partitioned by (province string, city string,county string);
+```
+
+多分区表的数据插入和查询使用
+
+```sql
+-- 插入数据
+load data local inpath '文件路径' into table t_user_province partition(province='shanghai');
+load data local inpath '文件路径' into table t_user_province_city_county partition(province='zhejiang',city='hangzhou',county='xiaoshan');
+
+-- 查询数据
+select * from t_user_province_city_county where province='zhejiang' and city='hangzhou';
+```
+
+#### 分区表的注意事项
+
+- 分区表不是建表的必要语法规则，是一种**优化手段表**，可选；
+- 分区字段**不能是表中已有的字段**，不能重复；
+- 分区字段是**虚拟字段**，其数据并**不存储在底层的文件中**；
+- 分区字段值的确定来自于用户价值数据手动指定（**静态分区**）或者根据查询结果位置自动推断（**动态分区**）；
+- Hive**支持多重分区**，也就是说在分区的基础上继续分区，划分更加细粒度
+
+### Hive 分桶表
+
+#### 分桶概念
+
+分桶表也叫做桶表，叫法源自建表语法中bucket单词，是一种用于**优化查询**而设计的表类型。
+
+分桶表对应的**数据文件**在底层会被**分解为若干个部分**，通俗来说就是被拆**分成若干个独立的小文件**。
+
+在分桶时，要指定根据哪个字段将数据分为几桶（几个部分）。
+
+![image-20210828203659886](./img/image-20210828203659886.png)
+
+#### 分桶规则
+
+分桶规则如下：**桶编号相同的数据会被分到同一个桶当中**。
+
+![image-20210828203807521](./img/image-20210828203807521.png)
+
+hash_function取决于分桶字段bucketing_column的类型：
+
+- 如果是int类型，hash_function(int) == int;
+- 如果是其他比如bigint,string或者复杂数据类型，hash_function比较棘手，将是从该类型派生的某个数字，比如hashcode值。
+
+![image-20210828203909586](./img/image-20210828203909586.png)
+
+#### 分桶语法
+
+![image-20210828204503539](./img/image-20210828204503539.png)
+
+- CLUSTERED BY (col_name)表示根据哪个字段进行分；
+- INTO num BUCKETS表示分为几桶（也就是几个部分）
+- 需要注意的是，**分桶的字段**必须是表中**已经存在的字段**。
+
+#### 分桶表的创建
+
+现有美国2021-1-28号，各个县county的新冠疫情累计案例信息，包括确诊病例和死亡病例，数据格式如下所示：
+
+```txt
+2021-01-28,Juneau City and Borough,Alaska,02110,1108,3
+2021-01-28,Kenai Peninsula Borough,Alaska,02122,3866,18
+2021-01-28,Ketchikan Gateway Borough,Alaska,02130,272,1
+2021-01-28,Kodiak Island Borough,Alaska,02150,1021,5
+2021-01-28,Kusilvak Census Area,Alaska,02158,1099,3
+2021-01-28,Lake and Peninsula Borough,Alaska,02164,5,0
+2021-01-28,Matanuska-Susitna Borough,Alaska,02170,7406,27
+2021-01-28,Nome Census Area,Alaska,02180,307,0
+2021-01-28,North Slope Borough,Alaska,02185,973,3
+2021-01-28,Northwest Arctic Borough,Alaska,02188,567,1
+2021-01-28,Petersburg Borough,Alaska,02195,43,0
+```
+
+字段含义如下：count_date（统计日期）,county（县）,state（州）,fips（县编码code）,cases（累计确诊病例）,deaths（累计死亡病例）。
+
+根据state州把数据分为5桶，建表语句如下：
+
+```sql
+-- 根据state州分为5桶
+CREATE TABLE testdb.t_usa_covid19_bucket(
+    count_date string,
+    county string,
+    state string,
+    fips int,
+    cases int,
+    deaths int)
+CLUSTERED BY(state) INTO 5 BUCKETS;
+```
+
+在创建分桶表时，还可以指定分桶内的数据排序规则
+
+```sql
+-- 根据state州分为5桶 每个桶内根据cases确诊病例数倒序排序
+CREATE TABLE testdb.t_usa_covid19_bucket_sort(
+      count_date string,
+      county string,
+      state string,
+      fips int,
+      cases int,
+      deaths int)
+CLUSTERED BY(state) sorted by (cases desc) INTO 5 BUCKETS;
+```
+
+#### 分桶数据的加载
+
+```sql
+-- step1:开启分桶的功能 从Hive2.0开始不再需要设置
+set hive.enforce.bucketing=true;
+
+-- step2:把源数据加载到普通hive表中
+CREATE TABLE testdb.t_usa_covid19(
+       count_date string,
+       county string,
+       state string,
+       fips int,
+       cases int,
+       deaths int)
+row format delimited fields terminated by ",";
+-- 将源数据上传到HDFS，普通表t_usa_covid19表对应的路径下
+hadoop fs -put us-covid19-counties.dat /user/hive/warehouse/testdb.db/t_usa_covid19
+
+-- step3:使用insert+select语法将数据加载到分桶表中
+insert into t_usa_covid19_bucket select * from t_usa_covid19;
+```
+
+到HDFS上查看t_usa_covid19_bucket底层数据结构可以发现，数据被分为了5个部分。
+
+并且从结果可以发现，分桶字段一样的数据就一定被分到同一个桶中。
+
+![image-20210828210647142](./img/image-20210828210647142.png)
+
+#### 分桶表好处
+
+- 基于分桶字段查询时，**减少全表扫描**
 
   ```sql
-  select concat('abc','def’,'gh'); 
+  -- 基于分桶字段state查询来自于New York州的数据
+  -- 不再需要进行全表扫描过滤
+  -- 根据分桶的规则hash_function(New York) mod 5计算出分桶编号
+  -- 查询指定分桶里面的数据 就可以找出结果  此时是分桶扫描而不是全表扫描
+  select * from t_usa_covid19_bucket where state="New York";
   ```
 
-- 带分隔符字符串连接函数： concat_ws 
+- JOIN时可以提高MR程序效率，**减少笛卡尔积数量**
+
+  对于JOIN操作两个表有一个相同的列，如果对这两个表都进行了分桶操作。那么将保存相同列值的桶进行JOIN操作就可以，可以大大较少JOIN的数据量。（比如下图中id是join的字段）
+
+  ![image-20210828211007857](./img/image-20210828211007857.png)
+
+- 分桶表数据进行高效抽样
+
+  当数据量特别大时，对全体数据进行处理存在困难时，抽样就显得尤其重要了。**抽样可以从被抽取的数据中估计和推断出整体的特性**，是科学实验、质量检验、社会调查普遍采用的一种经济有效的工作和研究方法。
+
+### Hive 事务表
+
+#### Hive 事务背景知识
+
+Hive设计之初时，是**不支持事务**的，原因：
+
+- Hive的**核心目标**是将已经存在的**结构化数据**文件**映射**成为表，然后提供基于表的SQL分析处理，是一款面向历史、面向分析的工具；
+- Hive作为数据仓库，是分析数据规律的，而不是创造数据规律的；
+- Hive中表的数据存储于HDFS上，而HDFS是**不支持随机修改文件**数据的，其常见的模型是**一次写入，多次读取**。
+
+这个定位就意味着在早期的Hive的SQL语法中是没有update，delete操作的，也就没有所谓事务支持了，因为都是select查询分析操作。
+
+从Hive0.14版本开始，具有ACID语义的事务已添加到Hive中，以解决以下场景下遇到的问题：
+
+- 流式传输数据
+
+  使用如Apache Flume、Apache Kafka之类的工具将数据流式传输到Hadoop集群中。虽然这些工具可以每秒数百行或更多行的速度写入数据，但是Hive只能每隔15分钟到一个小时添加一次分区。如果每分甚至每秒频繁添加分区会很快导致表中大量的分区,并将许多小文件留在目录中，这将给NameNode带来压力。
+
+  因此通常使用这些工具将数据流式传输到已有分区中，但这有**可能会造成脏读**（数据传输一半失败，回滚了）。
+  需要通过事务功能，允许用户获得一致的数据视图并避免过多的小文件产生。
+
+- 尺寸变化缓慢
+
+  星型模式数据仓库中，维度表随时间缓慢变化。例如，零售商将开设新商店，需要将其添加到商店表中，或者现有商店可能会更改其平方英尺或某些其他跟踪的特征。这些更改导致**需要插入单个记录或更新单条记录**（取决于所选策略）。
+
+- 数据重述
+
+  有时发现收集的**数据不正确**，**需要更正**。
+
+#### Hive 事务表局限性
+
+虽然Hive支持了具有ACID语义的事务，但是在使用起来，并没有像在MySQL中使用那样方便，有很多局限性。原因很简单，毕竟Hive的设计目标不是为了支持事务操作，而是支持分析操作，且最终基于HDFS的底层存储机制使得文件的增加删除修改操作需要动一些小心思。
+
+- 尚**不支持BEGIN，COMMIT和ROLLBACK**。所有语言操作都是自动提交的。
+- 仅支持ORC文件格式（STORED AS ORC）。
+- **默认**情况下事务配置为**关闭**。需要配置参数开启使用。
+- **表必须是分桶表**（Bucketed）才可以使用事务功能。
+- 表参数transactional必须为true；
+- 外部表不能成为ACID表，不允许从非ACID会话读取/写入ACID表。
+
+#### 案例 - 创建和使用 Hive 事务表
+
+如果不做任何配置修改，直接针对Hive中已有的表进行Update、Delete、Insert操作，可以发现，只有insert语句可以执行，Update和Delete操作会报错。
+
+![image-20210828212218981](./img/image-20210828212218981.png)
+
+Insert插入操作能够成功的原因在于，底层是直接把数据写在一个新的文件中的。
+
+下面看一下如何在Hive中配置开启事务表，并且进行操作
+
+```sql
+-- Hive中事务表的创建使用
+-- 1、开启事务配置（可以使用set设置当前session生效 也可以配置在hive-site.xml中）
+set hive.support.concurrency = true; --Hive是否支持并发
+set hive.enforce.bucketing = true; --从Hive2.0开始不再需要  是否开启分桶功能
+set hive.exec.dynamic.partition.mode = nonstrict; --动态分区模式  非严格
+set hive.txn.manager = org.apache.hadoop.hive.ql.lockmgr.DbTxnManager; --
+set hive.compactor.initiator.on = true; --是否在Metastore实例上运行启动线程和清理线程
+set hive.compactor.worker.threads = 1; --在此metastore实例上运行多少个压缩程序工作线程。
+
+-- 2、创建Hive事务表
+create table trans_student(
+    id int,
+    name String,
+    age int
+)clustered by (id) into 2 buckets stored as orc TBLPROPERTIES('transactional'='true');
+
+-- 3、针对事务表进行insert update delete操作
+insert into trans_student (id, name, age) values (1,"allen",18);
+
+update trans_student set age = 20 where id = 1;
+
+delete from trans_student where id =1;
+
+select * from trans_student;
+```
+
+#### Hive 事务表实现原理
+
+Hive的文件是存储在HDFS上的，而**HDFS上又不支持对文件的任意修改**，只能是采取另外的手段来完成。
+
+- 用HDFS文件作为原始数据（基础数据），用delta保存事务操作的记录增量数据；
+- 正在执行中的事务，是以一个staging开头的文件夹维护的，执行结束就是delta文件夹。每次执行一次事务操作都会有这样的一个delta增量文件夹;
+- 当访问Hive数据时，根据**HDFS原始文件和delta增量文件做合并**，查询最新的数据。
+
+![image-20210829225902229](./img/image-20210829225902229.png)
+
+- INSERT语句会直接创建delta目录；
+
+- DELETE目录的前缀是delete_delta；
+
+- UPDATE语句采用了split-update特性，即先删除、后插入；
+
+![image-20210829230049282](./img/image-20210829230049282.png)
+
+
+
+
+
+**delta文件夹命名格式**
+
+- **delta_minWID_maxWID_stmtID**，即delta前缀、写事务的ID范围、以及语句ID；删除时前缀是delete_delta，里面包含了要删除的文件；
+- Hive会为写事务（INSERT、DELETE等）创建一个**写事务ID**（Write ID），该ID在表范围内唯一；
+- **语句ID**（Statement ID）则是当一个事务中有多条写入语句时使用的，用作唯一标识。
+
+![image-20210829230423121](./img/image-20210829230423121.png)
+
+每个事务的delta文件夹下，都有两个文件：每个事务的delta文件夹下，都有两个文件：
+
+- _orc_acid_version的内容是2,即当前ACID版本号是2。和版本1的主要区别是UPDATE语句采用了split-update特性，即先删除、后插入。这个文件不是ORC文件，可以下载下来直接查看。
+
+![image-20210829230528534](./img/image-20210829230528534.png)
+
+- bucket_00000文件则是写入的数据内容。如果事务表没有分区和分桶，就只有一个这样的文件。文件都以ORC格式存储，底层二级制，需要使用ORC TOOLS查看。
+
+  ![image-20210829230702111](./img/image-20210829230702111.png)
+
+  - operation：0 表示插入，1 表示更新，2 表示删除。由于使用了split-update，UPDATE是不会出现的，所以delta文件中的operation是0 ， delete_delta 文件中的operation是2。
+  - originalTransaction、currentTransaction：该条记录的原始写事务ID，当前的写事务ID。
+  - rowId：一个自增的唯一ID，在写事务和分桶的组合中唯一。
+  - row：具体数据。对于DELETE语句，则为null，对于INSERT就是插入的数据，对于UPDATE就是更新后的数据。
+
+**合并器(Compactor)**
+
+- 随着表的修改操作，创建了越来越多的delta增量文件，就需要合并以保持足够的性能。
+- 合并器Compactor是一套在Hive Metastore内运行，支持ACID系统的后台进程。所有合并都是在后台完成的，不会阻止数据的并发读、写。合并后，系统将等待所有旧文件的读操作完成后，删除旧文件。
+- 合并操作分为两种，minor compaction（小合并）、major compaction（大合并）：
+  - 小合并会将一组delta增量文件重写为单个增量文件，默认触发条件为10个delta文件；
+  - 大合并将一个或多个增量文件和基础文件重写为新的基础文件，默认触发条件为delta文件相应于基础文件占比，10%
+
+![image-20210829231023443](./img/image-20210829231023443.png)
+
+
+
+### Hive View 视图
+
+#### 视图概念
+
+Hive中的视图（view）是一种虚拟表，只保存定义，不实际存储数据。通常从真实的物理表查询中创建生成视图，也可以从已经存在的视图上创建新视图。
+
+创建视图时，将冻结视图的架构，如果删除或更改基础表，则视图将失败，并且视图不能存储数据，操作数据，只能查询。
+
+**视图是用来简化操作的，它其实是一张虚表，在视图中不缓冲记录，也没有提高查询性能。**
+
+ ![image-20210828212814705](./img/image-20210828212814705.png)
+
+#### 相关语法
+
+```sql
+-- hive中有一张真实的基础表t_usa_covid19
+select * from itcast.t_usa_covid19;
+
+-- 1、创建视图
+create view v_usa_covid19 as select count_date, county,state,deaths from t_usa_covid19 limit 5;
+
+-- 能否从已有的视图中创建视图呢  可以的
+create view v_usa_covid19_from_view as select * from v_usa_covid19 limit 2;
+
+-- 2、显示当前已有的视图 
+show tables;
+show views;-- hive v2.2.0之后支持
+
+-- 3、视图的查询使用
+select * from v_usa_covid19;
+
+-- 能否插入数据到视图中呢？
+-- 不行 报错  SemanticException:A view cannot be used as target table for LOAD or INSERT
+insert into v_usa_covid19 select count_date,county,state,deaths from t_usa_covid19;
+
+-- 4、查看视图定义
+show create table v_usa_covid19;
+
+-- 5、删除视图
+drop view v_usa_covid19_from_view;
+
+-- 6、更改视图属性
+alter view v_usa_covid19 set TBLPROPERTIES ('comment' = 'This is a view');
+
+-- 7、更改视图定义
+alter view v_usa_covid19 as  select county,deaths from t_usa_covid19 limit 2;
+```
+
+#### 视图好处
+
+-  将真实表中特定的列数据提供给用户，保护数据隐式
 
   ```sql
-  select concat_ws(',','abc','def','gh');
-  ```
-
--  cast类型转换
-
-  ```sql
-  select cast(1.5 as int);
-  ```
-
-- get_json_object(json 解析函数，用来处理json，必须是json格式) 
-
-  ```sql
-  select get_json_object('{"name":"jack","age":"20"}','$.name');
-  ```
-
--  URL解析函数 
-
-  ```sql
-  select parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'HOST'); 
-  #结果：facebook.com
-  ```
-
-  ```sql
-  select parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'PATH'); 
-  #结果：/path1/p.php
-  ```
-
-  ```sql
-  select parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'QUERY'); 
-  #结果：K1=V1&K2=V2
-  ```
-
-  ```sql
-  select parse_url('http://facebook.com/path1/p.php?k1=v1&k2=v2#Ref1', 'QUERY','k1'); 
-  #结果：V1
-  ```
-
+  -- 通过视图来限制数据访问可以用来保护信息不被随意查询:
+  create table userinfo(firstname string, lastname string, ssn string, password string);
+  create view safer_user_info as select firstname, lastname from userinfo;
   
+  -- 可以通过where子句限制数据访问，比如，提供一个员工表视图，只暴露来自特定部门的员工信息:
+  create table employee(firstname string, lastname string, ssn string, password string, department string);
+  create view techops_employee as select firstname, lastname, ssn from userinfo where department = 'java';
+  ```
 
-### 自定义函数
+- 降低查询的复杂度，优化查询语句
 
-1. Hive 自带了一些函数，比如：max/min等，但是数量有限，自己可以通过自定义UDF来方便的扩展。 
+  ```sql
+  -- 使用视图优化嵌套查询
+  from (
+     select * from people join cart
+     on(cart.pepople_id = people.id) where firstname = 'join'
+       )a select a.lastname where a.id = 3;
+  
+  -- 把嵌套子查询变成一个视图
+  create view shorter_join as
+  	select * from people join cart on (cart.pepople_id = people.id) where firstname = 'join';
+  	
+  -- 基于视图查询
+  select lastname from shorter_join where id = 3;
+  ```
 
-2. 当Hive提供的内置函数无法满足你的业务处理需要时，此时就可以考虑使用用户自定义函数（UDF：user-defifined function）。 
+### Hive3.0 新特性 - 物化视图
 
-3. 根据用户自定义函数类别分为以下三种：upper -->my_upper 
-   - UDF（User-Defifined-Function）
-     - 一进一出 
+#### 物化视图概念
 
-   - UDAF（User-Defifined Aggregation Function） 
+**物化视图**（Materialized View）是一个**包括查询结果**的数据库对像，可以用于**预先计算**并保存表连接或聚集等耗时较多的操作的结果。在执行查询时，就可以避免进行这些耗时的操作，而从快速的得到结果。
 
-     - 聚集函数，多进一出 
+使用物化视图的目的就是**通过预计算，提高查询性能**，**当然需要占用一定的存储空间。**
 
-     - 类似于： count / max / min 
+![image-20210828213557663](./img/image-20210828213557663.png)
 
-   - UDTF（User-Defifined Table-Generating Functions） 
+Hive3.0开始尝试引入物化视图，并提供对于**物化视图的查询自动重写机制**（基于Apache Calcite实现）。
 
-     - 一进多出 
+Hive的物化视图还提供了**物化视图存储选择机制**，可以本地存储在Hive，也可以通过用户自定义storage handlers存储在其他系统（如Druid）。
 
-     - 如 lateral view explore() 
+Hive引入物化视图的目的就是为了**优化数据查询访问的效率,相当于从数据预处理的角度优化数据访问**。
 
-4. 官方文档地址 https://cwiki.apache.org/confluence/display/Hive/HivePlugins 
+Hive从3.0丢弃了index索引的语法支持，推荐使用物化视图和列式存储文件格式来加快查询的速度。
 
-5. 编程步骤： 
-   1）继承org.apache.hadoop.hive.ql.UDF 
+#### 物化视图、视图区别
 
-   2）需要实现evaluate函数；evaluate函数支持重载； 
+- **视图是虚拟**的，逻辑存在的，只有定义没有存储数据。
 
-6. 注意事项 
+- **物化视图是真实**的，物理存在的，**里面存储着预计算的数据**。
 
-   1）UDF必须要有返回类型，可以返回null，但是返回类型不能为void； 
+  物化视图能够缓存数据，在创建物化视图的时候就把数据缓存起来了，Hive把物化视图当成一张“表”，将数据缓存。而视图只是创建一个虚表，只有表结构，没有数据，实际查询的时候再去改写SQL去访问实际的数据表。
 
-   2）UDF中常用Text/LongWritable等类型，不推荐使用java类型； 
+- **视图的目的**是**简化**降低查询的**复杂度**，而**物化视图**的**目的**是**提高查询性能**。
 
-### **UDF** 开发实例
+#### 物化视图语法
 
-#### **Step 1** 创建 **Maven** 工程
+![image-20210828214031346](./img/image-20210828214031346.png)
 
-```xml
-    <!-- https://mvnrepository.com/artifact/org.apache.hive/hive-exec --> 
-    <dependency> 
-        <groupId>org.apache.hive</groupId> 
-        <artifactId>hive-exec</artifactId> 
-        <version>3.1.1</version> 
-    </dependency> 
-    <!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-common --> 	
-    <dependency> 
-        <groupId>org.apache.hadoop</groupId> 
-        <artifactId>hadoop-common</artifactId> 
-        <version>3.1.1</version> 
-        </dependency> 
-    </dependencies> 
-```
+- 物化视图创建后，select查询执行数据自动落地，“自动”也即在query的执行期间，任何用户对该物化视图是不可见的,执行完毕之后物化视图可用；
 
-#### **Step 2** 开发 **Java** 类集成 **UDF** 
+- 默认情况下，创建好的物化视图可被用于查询优化器optimizer查询重写，在物化视图创建期间可以通过 DISABLE REWRITE 参数设置禁止使用。
 
-```java
-public class MyUDF extends UDF{ 
-    public Text evaluate(final Text str){ 
-        String tmp_str = str.toString(); 
-        if(str != null && !tmp_str.equals("")){ 
-            String str_ret = tmp_str.substring(0, 1).toUpperCase()+tmp_str.substring(1); 
-            return new Text(str_ret); 
-        }
-        return new Text(""); 
-    } 
-}
-```
+- 默认SerDe和storage format为hive.materializedview.serde、 hive.materializedview.fileformat；
 
-#### **Step 3** 项目打包，并上传到**hive**的**lib**目录下
+- 物化视图支持将数据存储在外部系统（如druid），如下述语法所示：
 
-![](./img/udf.png)
+  ![image-20210828214135953](./img/image-20210828214135953.png)
 
-#### Step 4添加**jar**包 
+- 目前支持物化视图的drop和show操作，后续会增加其他操作
 
-重命名我们的jar包名称
+  ![image-20210828214210421](./img/image-20210828214210421.png)
 
-```shell
-#cd /export/servers/apache-hive-3.1.1-bin/lib 
-#mv original-day_05_hive_udf-1.0-SNAPSHOT.jar myudf.jar 
-```
+- 当数据源变更（新数据插入inserted、数据修改modified），物化视图也需要更新以保持数据一致性，目前需要用户主动触发rebuild重构。
 
-hive的客户端添加我们的jar包 
+  ![image-20210828214229864](./img/image-20210828214229864.png)
 
-```shell
-#hive> add jar /export/servers/apache-hive-3.1.1-bin/lib/udf.jar;
-```
+#### 基于物化视图的查询重写
 
-#### **Step 5** 设置函数与我们的自定义函数关联 
+物化视图创建后即可用于相关查询的加速，即：用户提交查询query，若该query经过重写后可以命中已经存在的物化视图，则直接通过物化视图查询数据返回结果，以实现查询加速。
+
+是否重写查询使用物化视图可以通过全局参数控制，默认为true： hive.materializedview.rewriting=true;
+
+用户可选择性的控制指定的物化视图查询重写机制，语法如下：
+
+![image-20210828214426657](./img/image-20210828214426657.png)
+
+#### 案例 - 基于物化视图的重写查询
+
+1. 用户提交查询query
+2. 若该query经过重写后可以命中已经存在的物化视图
+3. 则直接通过物化视图查询数据返回结果，以实现查询加速
 
 ```sql
-create temporary function my_upper as 'cn.itcast.udf.ItcastUDF';
+-- 1、新建一张事务表 student_trans
+set hive.support.concurrency = true; --Hive是否支持并发
+set hive.enforce.bucketing = true; --从Hive2.0开始不再需要  是否开启分桶功能
+set hive.exec.dynamic.partition.mode = nonstrict; --动态分区模式  非严格
+set hive.txn.manager = org.apache.hadoop.hive.ql.lockmgr.DbTxnManager; --
+set hive.compactor.initiator.on = true; --是否在Metastore实例上运行启动线程和清理线程
+set hive.compactor.worker.threads = 1; --在此metastore实例上运行多少个压缩程序工作线程。
+
+CREATE TABLE student_trans (
+      sno int,
+      sname string,
+      sdept string)
+clustered by (sno) into 2 buckets stored as orc TBLPROPERTIES('transactional'='true');
+
+
+-- 2、导入数据到student_trans中
+insert overwrite table student_trans
+select sno,sname,sdept
+from student;
+
+select * from student_trans;
+
+-- 3、对student_trans建立聚合物化视图
+CREATE MATERIALIZED VIEW student_trans_agg
+AS SELECT sdept, count(*) as sdept_cnt from student_trans group by sdept;
+
+-- 注意 这里当执行CREATE MATERIALIZED VIEW，会启动一个MR对物化视图进行构建
+-- 可以发现当下的数据库中有了一个物化视图
+show tables;
+show materialized views;
+
+-- 4、对原始表student_trans查询
+-- 由于会命中物化视图，重写query查询物化视图，查询速度会加快（没有启动MR，只是普通的table scan）
+SELECT sdept, count(*) as sdept_cnt from student_trans group by sdept;
+
+-- 5、查询执行计划可以发现 查询被自动重写为TableScan alias: itcast.student_trans_agg
+-- 转换成了对物化视图的查询  提高了查询效率
+explain SELECT sdept, count(*) as sdept_cnt from student_trans group by sdept;
 ```
 
-#### **Step 6** 使用自定义函数
+![image-20210828214847293](./img/image-20210828214847293.png)
+
+## Hive DDL 其它语法
+
+### Database|Schema （数据库）DDL操作
+
+#### 整体概述
+
+在Hive中，DATABASE的概念和RDBMS中类似，我们称之为数据库，DATABASE和SCHEMA是可互换的，都可以使用。
+
+默认的数据库叫做default，存储数据位置位于/user/hive/warehouse下。
+
+用户自己创建的数据库存储位置是/user/hive/warehouse/database_name.db下。
+
+#### create database
+
+create database用于创建新的数据库
+
+```sql
+CREATE (DATABASE|SCHEMA) [IF NOT EXISTS] database_name
+[COMMENT database_comment]
+[LOCATION hdfs_path]
+[WITH DBPROPERTIES (property_name=property_value, ...)];
+```
+
+- COMMENT：数据库的注释说明语句
+- LOCATION：指定数据库在HDFS存储位置，默认/user/hive/warehouse/dbname.db
+- WITH DBPROPERTIES：用于指定一些数据库的属性配置。
+
+例子：创建数据库testdb
+
+```sql
+create database if not exists firstdb
+comment "this is my first db"
+with dbproperties ('createdBy'='AllenWoon');
+```
+
+![image-20210829132026903](./img/image-20210829132026903.png)
+
+**注意：**如果需要使用location指定路径的时候，最好指向的是一个新创建的空文件夹。
+
+#### describe database
+
+显示Hive中数据库的名称，注释（如果已设置）及其在文件系统上的位置等信息。
+
+```sql
+DESCRIBE DATABASE/SCHEMA [EXTENDED] db_name;
+```
+
+- EXTENDED：用于显示更多信息。可以将关键字describe简写成desc使用。
+
+![image-20210829132224442](./img/image-20210829132224442.png)
+
+![image-20210829132303837](./img/image-20210829132303837.png)
+
+
+
+#### use database
+
+选择特定的数据库，切换当前会话使用哪一个数据库进行操作
+
+```sql
+USE database_name;
+```
+
+#### drop database
+
+删除数据库
+
+- 默认行为是RESTRICT，这意味着仅在数据库为空时才删除它。**要删除带有表的数据库（不为空的数据库），我们可以使用CASCADE**。
+
+```sql
+DROP (DATABASE|SCHEMA) [IF EXISTS] database_name [RESTRICT|CASCADE];
+```
+
+#### alter database
+
+更改与Hive中的数据库关联的元数据
+
+```sql
+-- 更改数据库属性
+ALTER (DATABASE|SCHEMA) database_name SET DBPROPERTIES (property_name=property_value, ...);
+
+-- 更改数据库所有者
+ALTER (DATABASE|SCHEMA) database_name SET OWNER [USER|ROLE] user_or_role;
+
+-- 更改数据库位置
+ALTER (DATABASE|SCHEMA) database_name SET LOCATION hdfs_path;
+```
+
+
+
+### Table（表）DDL操作
+
+#### 整体概述
+
+Hive中针对表的DDL操作可以说是DDL中的核心操作，包括建表、修改表、删除表、描述表元数据信息。
+
+其中以建表语句为核心中的核心，详见Hive DDL建表语句。
+
+可以说表的定义是否成功直接影响着数据能够成功映射，进而影响是否可以顺利的使用Hive开展数据分析。
+
+由于Hive建表之后加载映射数据很快，实际中如果建表有问题，可以不用修改，直接删除重建。
+
+#### describe table
+
+显示Hive中表的元数据信息
+
+- 如果指定了EXTENDED关键字，则它将以Thrift序列化形式显示表的所有元数据。
+- 如果指定了FORMATTED关键字，则它将以表格格式显示元数据。
+
+![image-20210829133207884](./img/image-20210829133207884.png)
+
+![image-20210829133236534](./img/image-20210829133236534.png)
+
+![image-20210829133300018](./img/image-20210829133300018.png)
+
+#### drop table
+
+删除该表的元数据和数据
+
+- 如果已配置垃圾桶且未指定PURGE，则该表对应的数据实际上将移动到HDFS垃圾桶，而元数据完全丢失。
+- 删除EXTERNAL表时，该表中的数据不会从文件系统中删除，只删除元数据。
+- 如果指定了PURGE，则表数据跳过HDFS垃圾桶直接被删除。因此如果DROP失败，则无法挽回该表数据。
+
+```sql
+DROP TABLE [IF EXISTS] table_name [PURGE];    -- (Note: PURGE available in Hive 0.14.0 and later)
+```
+
+#### truncate table
+
+从表中删除所有行。
+
+- 可以简单理解为**清空表的所有数据**但是**保留表的元数据结构**。
+- 如果HDFS启用了垃圾桶，数据将被丢进垃圾桶，否则将被删除。
+
+```sql
+TRUNCATE [TABLE] table_name;
+```
+
+#### alter table
+
+```sql
+-- 1、更改表名
+ALTER TABLE table_name RENAME TO new_table_name;
+
+-- 2、更改表属性
+ALTER TABLE table_name SET TBLPROPERTIES (property_name = property_value, ... );
+-- 更改表注释
+ALTER TABLE student SET TBLPROPERTIES ('comment' = "new comment for student table");
+
+-- 3、更改SerDe属性
+ALTER TABLE table_name SET SERDE serde_class_name [WITH SERDEPROPERTIES (property_name = property_value, ... )];
+ALTER TABLE table_name [PARTITION partition_spec] SET SERDEPROPERTIES serde_properties;
+ALTER TABLE table_name SET SERDEPROPERTIES ('field.delim' = ',');
+-- 移除SerDe属性
+ALTER TABLE table_name [PARTITION partition_spec] UNSET SERDEPROPERTIES (property_name, ... );
+
+-- 4、更改表的文件存储格式 该操作仅更改表元数据。现有数据的任何转换都必须在Hive之外进行。
+ALTER TABLE table_name  SET FILEFORMAT file_format;
+
+-- 5、更改表的存储位置路径
+ALTER TABLE table_name SET LOCATION "new location";
+
+-- 6、更改列名称/类型/位置/注释
+CREATE TABLE test_change (a int, b int, c int);
+// First change column a's name to a1.
+ALTER TABLE test_change CHANGE a a1 INT;
+// Next change column a1's name to a2, its data type to string, and put it after column b.
+ALTER TABLE test_change CHANGE a1 a2 STRING AFTER b;
+// The new table's structure is:  b int, a2 string, c int.
+// Then change column c's name to c1, and put it as the first column.
+ALTER TABLE test_change CHANGE c c1 INT FIRST;
+// The new table's structure is:  c1 int, b int, a2 string.
+// Add a comment to column a1
+ALTER TABLE test_change CHANGE a1 a1 INT COMMENT 'this is column a1';
+
+-- 7、添加/替换列
+-- 使用ADD COLUMNS，您可以将新列添加到现有列的末尾但在分区列之前。
+-- REPLACE COLUMNS 将删除所有现有列，并添加新的列集。
+ALTER TABLE table_name ADD|REPLACE COLUMNS (col_name data_type,...);
+```
+
+### Partition（分区）DDL操作
+
+#### 整体概述
+
+Hive中针对分区Partition的操作主要包括：增加分区、删除分区、重命名分区、修复分区、修改分区。
+
+#### add partition
+
+分区值仅在为字符串时才应加引号。位置必须是数据文件所在的目录。
+
+ADD PARTITION会更改表元数据，但不会加载数据。如果分区位置中不存在数据，查询时将不会返回结果。因此需要保证增加的分区位置路径下，数据已经存在，或者增加完分区之后导入分区数据。
+
+```sql
+-- 1、增加分区
+ALTER TABLE table_name ADD PARTITION (dt='20170101') location '/user/hadoop/warehouse/table_name/dt=20170101'; 
+-- 一次添加一个分区
+
+ALTER TABLE table_name ADD PARTITION (dt='2008-08-08', country='us') location '/path/to/us/part080808'
+                       PARTITION (dt='2008-08-09', country='us') location '/path/to/us/part080809';  
+-- 一次添加多个分区
+```
+
+#### rename partition
+
+```sql
+-- 2、重命名分区
+ALTER TABLE table_name PARTITION partition_spec RENAME TO PARTITION partition_spec;
+ALTER TABLE table_name PARTITION (dt='2008-08-09') RENAME TO PARTITION (dt='20080809');
+```
+
+#### delete partition
+
+可以使用ALTER TABLE DROP PARTITION删除表的分区。这将删除该分区的数据和元数据。
+
+```sql
+-- 3、删除分区
+ALTER TABLE table_name DROP [IF EXISTS] PARTITION (dt='2008-08-08', country='us');
+ALTER TABLE table_name DROP [IF EXISTS] PARTITION (dt='2008-08-08', country='us') PURGE; -- 直接删除数据 不进垃圾桶
+```
+
+#### alter partition
+
+```sql
+-- 4、修改分区
+-- 更改分区文件存储格式
+ALTER TABLE table_name PARTITION (dt='2008-08-09') SET FILEFORMAT file_format;
+-- 更改分区位置
+ALTER TABLE table_name PARTITION (dt='2008-08-09') SET LOCATION "new location";
+```
+
+#### mack partition
+
+Hive将每个表的分区列表信息存储在其metastore中。但是，如果将新分区直接添加到HDFS（例如通过使用hadoop fs -put命令）或从HDFS中直接删除分区文件夹，则除非用户ALTER TABLE table_name ADD/DROP PARTITION在每个新添加的分区上运行命令，否则metastore（也就是Hive）将不会意识到分区信息的这些更改。
+
+**MSCK是metastore check**的缩写，表示**元数据检查操作**，可用于元数据的修复。
+
+```sql
+-- 5、修复分区
+MSCK [REPAIR] TABLE table_name [ADD/DROP/SYNC PARTITIONS];
+```
+
+- MSCK默认行为ADD PARTITIONS，使用此选项，它将把HDFS上存在但元存储中不存在的所有分区添加到metastore。
+
+- DROP PARTITIONS选项将从已经从HDFS中删除的metastore中删除分区信息。
+
+- SYNC PARTITIONS选项等效于调用ADD和DROP PARTITIONS。
+
+- 如果存在大量未跟踪的分区，则可以批量运行MSCK REPAIR TABLE，以避免OOME（内存不足错误）。
+
+#### 案例 - MSCK 修复parttion
+
+1. 创建一张分区表，直接使用HDFS命令在表文件夹下创建分区文件夹并上传数据，此时在Hive中查询是无法显示表数据的，因为metastore中没有记录，使用**MSCK ADD PARTITIONS**进行修复。
+
+   ```sql
+   --Step1：创建分区表
+   create table t_all_hero_part_msck(       
+       id int,       
+       name string,       
+       hp_max int,       
+       mp_max int,       
+       attack_max int,       
+       defense_max int,       
+       attack_range string,       
+       role_main string,       
+       role_assist string) 
+   partitioned by (role string) 
+   row format delimited 
+   fields terminated by "\t";
+   
+   -- Step2：在linux上，使用HDFS命令创建分区文件夹
+   # hadoop fs -mkdir -p /user/hive/warehouse/t_all_hero.db/t_all_hero_part_msck/role=sheshou
+   # hadoop fs -mkdir -p /user/hive/warehouse/t_all_hero.db/t_all_hero_part_msck/role=tanke
+   -- Step3：把数据文件上传到对应的分区文件夹下
+   # hadoop fs -put archer.txt /user/hive/warehouse/t_all_hero.db/t_all_hero_part_msck/role=sheshou
+   # hadoop fs -put tank.txt /user/hive/warehouse/itheima.db/t_all_hero_part_msck/role=tanke
+   -- Step4：查询表 可以发现没有数据
+   select * from t_all_hero_part_msck;
+   
+   --Step5：使用MSCK命令进行修复--add partitions可以不写 因为默认就是增加分区
+   MSCK repair table t_all_hero_part_msck add partitions;
+   ```
+
+2. 针对分区表，直接使用HDFS命令删除分区文件夹，此时在Hive中查询显示分区还在，因为metastore中还没有被删除，使用**MSCK DROP PARTITIONS**进行修复。
+
+   ```sql
+   -- Step1：直接使用HDFS命令删除分区表的某一个分区文件夹
+   # hadoop fs -rm -r /user/hive/warehouse/t_all_hero.db/t_all_hero_part_msck/role=sheshou
+   
+   -- Step2：查询发现还有分区信息
+   -- 因为元数据信息没有删除
+   show partitions t_all_hero_part_msck;
+   
+   -- Step3：使用MSCK命令进行修复
+   MSCK repair table t_all_hero_part_msck drop partitions;
+   ```
+
+
+
+## Hive Show 显示语法
+
+### 整体概述
+
+Show相关的语句提供了一种查询Hive metastore的方法。可以帮助用户查询相关信息。
+
+比如我们最常使用的查询当前数据库下有哪些表 show tables.
+
+### 常用语句
+
+```sql
+-- 1、显示所有数据库 SCHEMAS和DATABASES的用法 功能一样
+show databases;
+show schemas;
+
+-- 2、显示当前数据库所有表/视图/物化视图/分区/索引
+show tables;
+SHOW TABLES [IN database_name]; --指定某个数据库
+
+-- 3、显示当前数据库下所有视图
+Show Views;
+SHOW VIEWS 'test_*'; -- show all views that start with "test_"
+SHOW VIEWS FROM test1; -- show views from database test1
+SHOW VIEWS [IN/FROM database_name];
+
+-- 4、显示当前数据库下所有物化视图
+SHOW MATERIALIZED VIEWS [IN/FROM database_name];
+
+-- 5、显示表分区信息，分区按字母顺序列出，不是分区表执行该语句会报错
+show partitions table_name;
+
+-- 6、显示表/分区的扩展信息
+SHOW TABLE EXTENDED [IN|FROM database_name] LIKE table_name;
+show table extended like student;
+
+-- 7、显示表的属性信息
+SHOW TBLPROPERTIES table_name;
+show tblproperties student;
+
+-- 8、显示表、视图的创建语句
+SHOW CREATE TABLE ([db_name.]table_name|view_name);
+show create table student;
+
+-- 9、显示表中的所有列，包括分区列。
+SHOW COLUMNS (FROM|IN) table_name [(FROM|IN) db_name];
+show columns  in student;
+
+-- 10、显示当前支持的所有自定义和内置的函数
+show functions;
+
+-- 11、Describe desc
+-- 查看表信息
+desc extended table_name;
+-- 查看表信息（格式化美观）
+desc formatted table_name;
+-- 查看数据库相关信息
+describe database database_name;
+```
+
+
+
+## Hive DML Load 加载数据
+
+### 背景
+
+在Hive中建表成功之后，就会在HDFS上创建一个与之对应的文件夹，且**文件夹名字就是表名**；
+
+文件夹父路径是由参数hive.metastore.warehouse.dir控制，默认值是/user/hive/warehouse；
+
+也可以在建表的时候使用location语句指定任意路径。
+
+![image-20210829141543730](./img/image-20210829141543730.png)
+
+不管路径在哪里，只有把数据文件移动到对应的表文件夹下面，Hive才能映射解析成功;
+
+最原始暴力的方式就是使用**hadoop fs –put|-mv**等方式直接将数据移动到表文件夹下；
+
+但是，Hive官方**推荐使用Load命令**将数据加载到表中。
+
+![image-20210829141828268](./img/image-20210829141828268.png)
+
+### Load 语法
+
+Load英文单词的含义为：**加载、装载**；
+
+所谓加载是指：将数据文件移动到与Hive表对应的位置，移动时是**纯复制、移动**操作。
+
+**纯复制、移动**指在数据load加载到表中时，Hive不会对表中的数据内容进行任何转换，任何操作。
+
+#### 语法规则
+
+![image-20210829142912250](./img/image-20210829142912250.png)
+
+#### filepath
+
+filepath表示**待移动数据的路径**。可以指向**文件**（在这种情况下，Hive将文件移动到表中），也可以指向**目录**（在这种情况下，Hive将把该目录中的所有文件移动到表中）。
+
+filepath文件路径支持下面三种形式，要结合LOCAL关键字一起考虑：
+
+- 相对路径，例如：project/data1 
+- 绝对路径，例如：/user/hive/project/data1 
+- 具有schema的完整URI，例如：hdfs://namenode:9000/user/hive/project/data1
+
+#### LOCAL
+
+指定LOCAL， 将在本地文件系统中查找文件路径。
+
+- 若指定相对路径，将相对于用户的当前工作目录进行解释；
+- 用户也可以为本地文件指定完整的URI-例如：file:///user/hive/project/data1。
+
+没有指定LOCAL关键字。
+
+- 如果filepath指向的是一个完整的URI，会直接使用这个URI；
+- 如果没有指定schema，Hive会使用在hadoop配置文件中参数fs.default.name指定的（不出意外，都是HDFS）。 
+
+**LOCAL本地是哪里？**
+
+如果对HiveServer2服务运行此命令
+
+**本地文件系统**指的是Hiveserver2服务所在机器的本地Linux文件系统，不是Hive客户端所在的本地文件系统。
+
+![image-20210829142653564](./img/image-20210829142653564.png)
+
+#### OVERWRITE
+
+如果使用了OVERWRITE关键字，则目标表（或者分区）中的已经存在的数据会被删除，然后再将filepath指向的文件/目录中的内容添加到表/分区中。 
+
+### 案例 - Load Data From Local FS or HDFS
+
+1. 练习Load Data From Local FS
+2. 练习Load Data From HDFS
+3. 理解Local关键字的含义 
+4. 练习Load Dada To Partition Table
+
+案例数据：students.txt
+
+```txt
+95001,李勇,男,20,CS
+95002,刘晨,女,19,IS
+95003,王敏,女,22,MA
+95004,张立,男,19,IS
+95005,刘刚,男,18,MA
+95006,孙庆,男,23,CS
+95007,易思玲,女,19,MA
+95008,李娜,女,18,CS
+95009,梦圆圆,女,18,MA
+95010,孔小涛,男,19,CS
+95011,包小柏,男,18,MA
+95012,孙花,女,20,CS
+95013,冯伟,男,21,CS
+95014,王小丽,\N,19,CS
+95015,王君,男,18,MA
+95016,钱国,男,21,MA
+95017,王风娟,女,18,IS
+95018,王一,女,19,IS
+95019,邢小丽,女,19,IS
+95020,赵钱,男,21,IS
+95021,周二,男,17,MA
+95022,郑明,男,20,MA
+```
+
+```sql
+-------- 练习:Load Data From Local FS or HDFS------
+-- step1:建表
+-- 建表student_local 用于演示从本地加载数据
+create table student_local(
+  num int,
+  name string,
+  sex string,
+  age int,
+  dept string) 
+  row format delimited fields terminated by ',';
+  
+-- 建表student_HDFS  用于演示从HDFS加载数据
+create external table student_HDFS(
+  num int,
+  name string,
+  sex string,
+  age int,
+  dept string) 
+  row format delimited fields terminated by ',';
+  
+-- 建表student_HDFS_p 用于演示从HDFS加载数据到分区表
+create table student_HDFS_p(
+  num int,
+  name string,
+  sex string,
+  age int,
+  dept string) 
+  partitioned by(country string) 
+  row format delimited fields terminated by ',';
+```
 
 ```shell
-select my_upper('abc');
+-- 建议使用beeline客户端 可以显示出加载过程日志信息
+-- 从本地加载数据  数据位于HS2（node1）本地文件系统  本质是hadoop fs -put上传操作
+LOAD DATA LOCAL INPATH '/opt/hivedata/students.txt' INTO TABLE student_local;
 ```
+
+![image-20210829161435320](./img/image-20210829161435320.png)
+
+```shell
+ -- 从HDFS加载数据  数据位于HDFS文件系统根目录下  本质是hadoop fs -mv 移动操作
+-- 先把数据上传到HDFS上  
+hadoop fs -put /opt/hivedata/students.txt /
+LOAD DATA INPATH '/students.txt' INTO TABLE student_HDFS;
+```
+
+![image-20210829161758936](./img/image-20210829161758936.png)
+
+```shell
+---- 从HDFS加载数据到分区表中并制定分区  数据位于HDFS文件系统根目录下
+-- 先把数据上传到HDFS上 
+hadoop fs -put /opt/hivedata/students.txt /
+LOAD DATA INPATH '/students.txt' INTO TABLE student_HDFS_p partition(country ="CHina");
+```
+
+![image-20210829161907579](./img/image-20210829161907579.png)
+
+
+
+### Hive3.0 Load新特性
+
+- Hive3.0+，load加载数据时除了移动、复制操作之外，在**某些场合下还会将加载重写为INSERT AS SELECT**。
+
+- Hive3.0+，还支持使用inputformat、SerDe指定输入格式，例如Text，ORC等。
+
+比如，如果表具有分区，则load命令没有指定分区，则将load转换为INSERT AS SELECT，并假定最后一组列为分区列，如果文件不符合预期，则报错。
+
+#### 案例
+
+本来加载的时候没有指定分区，语句是报错的，但是文件的格式符合表的结构，前两个是col1,col2,最后一个是分区字段col3，则此时会将load语句转换成为insert as select语句。
+
+```sql
+------hive 3.0 load命令新特性------------------
+CREATE TABLE if not exists tab1 (
+  col1 int, 
+  col2 int)
+PARTITIONED BY (col3 int)
+row format delimited fields terminated by ',';
+
+LOAD DATA LOCAL INPATH '/opt/hivedata/tab1.txt' INTO TABLE tab1;
+-- tab1.txt内容如下
+11,22,1
+33,44,2
+```
+
+本来加载的时候没有指定分区，语句是报错的，但是文件的格式符合表的结构，前两个是col1,col2,最后一个是分区字段col3，则此时会将load语句转换成为insert as select语句。
+
+在Hive3.0中，还支持使用inputformat、SerDe指定任何Hive输入格式，例如文本，ORC等。
+
+## Hive DML Insert 插入数据
+
+### 背景
+
+在MySQL这样的RDBMS中，通常使用insert+values的方式来向表插入数据，并且执行速度很快。
+
+这也是RDBMS中表插入数据的核心方式。
+
+![image-20210829220618326](./img/image-20210829220618326.png)
+
+假如说对Hive的定位不清，把Hive当成RDBMS来使用，也使用insert+values的方式插入数据，会如何呢？
+
+```sql
+-- hive中insert+values
+create table t_test_insert(id int,name string,age int);
+insert into table t_test_insert values(1,"allen",18);
+```
+
+你会发现执行过程非常非常慢，底层是使用MapReduce把数据写入HDFS的。
+
+![image-20210829220735622](./img/image-20210829220735622.png)
+
+
+
+试想一下，如何在Hive中这样玩，对于大数据分析，海量数据一条条插入是不是非常刺激。因此在Hive中我们通过将数据清洗成为结构化文件，再Load加载到表中。
+
+但是并不意味着insert语法在Hive中没有使用地位了，通常在Hive中我们使用insert+select语句。即插入表的数据来自于后续select查询语句返回的结果。
+
+### insert + select
+
+insert+select表示：将后面**查询**返回的**结果**作为内容**插入**到**指定表**中，注意**OVERWRITE**将覆盖已有数据。
+
+- 需要保证查询结果列的数目和需要插入数据表格的列数目一致。
+- 如果查询出来的**数据类型**和插入表格对应的列数据类型**不一致**，将会进行转换，但是不能保证转换一定成功，转换失败的数据将会为NULL。
+
+![image-20210829220926996](./img/image-20210829220926996.png)
+
+```sql
+-- step1:创建一张源表student
+drop table if exists student;
+create table student(
+  num int,
+  name string,
+  sex string,
+  age int,
+  dept string)
+row format delimited
+fields terminated by ',';
+-- 加载数据
+load data local inpath '/root/hivedata/students.txt' into table student;
+
+-- step2：创建一张目标表  只有两个字段
+create table student_from_insert(
+  sno int,
+  sname string);
+-- 使用insert+select插入数据到新表中
+insert into table student_from_insert select num,name from student;
+
+select *from student_insert1;
+```
+
+### multiple inserts 多重插入
+
+翻译为多次插入，多重插入，其核心功能是：**一次扫描，多次插入**。
+
+语法目的就是**减少扫描的次数**，在一次扫描中。完成多次insert操作。
+
+```sql
+------------multiple inserts----------------------
+-- 当前库下已有一张表student
+select * from student;
+-- 创建两张新表
+create table student_insert1(sno int);
+create table student_insert2(sname string);
+
+-- 多重插入
+from student
+insert overwrite table student_insert1
+select num
+insert overwrite table student_insert2
+select name;
+```
+
+### dynamic partition insert 动态分区插入
+
+对于分区表的数据导入加载，最基础的是通过load命令加载数据。
+
+在load过程中，分区值是手动指定写死的，叫做**静态分区**。
+
+```sql
+create table student_HDFS_p(
+  Sno int,
+  Sname string,
+  Sex string,
+  Sage int,
+  Sdept string) 
+  partitioned by(country string) 
+  row format delimited fields terminated by ',';
+-- 注意 分区字段country的值是在导入数据的时候手动指定的 China
+LOAD DATA INPATH '/students.txt' INTO TABLE student_HDFS_p partition(country ="China");
+```
+
+接下来我们考虑一下性能问题：
+
+假如说现在有全球224个国家的人员名单（每个国家名单单独一个文件），让你导入数据到分区表中，不同国家不同分区，如何高效实现？使用load语法导入224次？
+
+再假如，现在有一份名单students.txt，内容如下：
+
+```txt
+95001,李勇,男,20,CS
+95002,刘晨,女,19,IS
+95003,王敏,女,22,MA
+95004,张立,男,19,IS
+95005,刘刚,男,18,MA
+95006,孙庆,男,23,CS
+95007,易思玲,女,19,MA
+95008,李娜,女,18,CS
+95009,梦圆圆,女,18,MA
+95010,孔小涛,男,19,CS
+95011,包小柏,男,18,MA
+95012,孙花,女,20,CS
+95013,冯伟,男,21,CS
+95014,王小丽,女,19,CS
+95015,王君,男,18,MA
+95016,钱国,男,21,MA
+95017,王风娟,女,18,IS
+95018,王一,女,19,IS
+95019,邢小丽,女,19,IS
+95020,赵钱,男,21,IS
+95021,周二,男,17,MA
+95022,郑明,男,20,MA
+```
+
+让你创建一张分区表，根据最后一个字段（选修专业）进行分区，同一个专业的同学分到同一个分区中，如何实现？如果还是load加载手动指定，即使最终可以成功，效率也是极慢的。
+
+为此，Hive提供了**动态分区插入**的语法。
+
+所谓动态分区插入指的是：**分区的值是由后续的select查询语句的结果来动态确定的**。**根据查询结果自动分区**。
+
+**配置参数**
+
+| hive.exec.dynamic.partition      | true   | 需要设置true为启用动态分区插入                               |
+| -------------------------------- | ------ | ------------------------------------------------------------ |
+| hive.exec.dynamic.partition.mode | strict | 在strict模式下，用户必须至少指定一个静态分区，以防用户意外覆盖所有分区；在nonstrict模式下，允许所有分区都是动态的 |
+
+关于严格模式、非严格模式，演示如下：
+
+```sql
+FROM page_view_stg pvs
+INSERT OVERWRITE TABLE page_view PARTITION(dt='2008-06-08', country)
+SELECT pvs.viewTime, pvs.userid, pvs.page_url, pvs.referrer_url, null, null, pvs.ip, pvs.cnt
+
+--在这里，country分区将由SELECT子句（即pvs.cnt）的最后一列动态创建。
+--而dt分区是手动指定写死的。
+--如果是nonstrict模式下，dt分区也可以动态创建。
+```
+
+**案例 - 动态分区插入**
+
+```sql
+-- 动态分区插入
+-- 1、首先设置动态分区模式为非严格模式 默认已经开启了动态分区功能
+set hive.exec.dynamic.partition = true;
+set hive.exec.dynamic.partition.mode = nonstrict;
+
+-- 2、当前库下已有一张表student
+select * from student;
+
+-- 3、创建分区表 以sdept作为分区字段
+-- 注意：分区字段名不能和表中的字段名重复。
+create table student_partition(Sno int,Sname string,Sex string,Sage int) partitioned by(Sdept string);
+
+-- 4、执行动态分区插入操作
+insert into table student_partition partition(Sdept)
+select Sno,Sname,Sex,Sage,Sdept from student;
+-- 其中，Sno,Sname,Sex,Sage作为表的字段内容插入表中
+-- Sdept作为分区字段值
+```
+
+最终执行结果如下，可以发现实现了自动分区：
+
+![image-20210829222924118](./img/image-20210829222924118.png)
+
+### insert + directory 导出数据
+
+**语法格式**：
+
+- Hive支持将select查询的结果导出成文件存放在文件系统中。语法格式如下；
+
+![image-20210829223147944](./img/image-20210829223147944.png)
+
+**注意：**导出操作是一个OVERWRITE覆盖操作，慎重。
+
+目录可以是完整的URI。如果未指定scheme，则Hive将使用hadoop配置变量fs.default.name来决定导出位置；
+
+如果使用LOCAL关键字，则Hive会将数据写入本地文件系统上的目录；
+
+**写入文件系统的数据被序列化为文本，列之间用\001隔开，行之间用换行符隔开**。如果列都不是原始数据类型，那么这些列将序列化为JSON格式。也可以在导出的时候指定分隔符换行符和文件格式。
+
+**演示：**
+
+```sql
+-- 当前库下已有一张表student
+select * from student;
+
+-- 1、导出查询结果到HDFS指定目录下
+insert overwrite directory '/tmp/hive_export/e1' select * from student;
+
+-- 2、导出时指定分隔符和文件存储格式
+insert overwrite directory '/tmp/hive_export/e2' row format delimited fields terminated by ','
+stored as orc
+select * from student;
+
+-- 3、导出数据到本地文件系统指定目录下
+insert overwrite local directory '/root/hive_export/e1' select * from student;
+```
+
+![image-20210829223612046](./img/image-20210829223612046.png)
+
+![image-20210829223701581](./img/image-20210829223701581.png)
+
+
+
+## Hive DML Update、Delete 更新删除数据
+
+首先，必须明确，你理解的Hive这款软件，定位是什么？是面向事务支持事务的RDBMS?还是面向分析，支持分析的数据仓库。这很重要。
+
+Hive是基于Hadoop的数据仓库，面向分析支持分析工具。因此在Hive中常见的操作的就是分析查询select操作。将已有的结构化数据文件映射成为表，然后提供SQL分析数据的能力。
+
+因此Hive刚出现的时候是不支持update和delete语法支持的，因为Hive所处理的数据都是已经存在的结构化文件，加载到hive表中即可。
+
+后续Hive支持了相关的update和delete操作，不过有很多约束。详见Hive事务的支持。
+
+### update 操作
+
+```sql
+-- 1、开启事务配置（可以使用set设置当前session生效 也可以配置在hive-site.xml中）
+set hive.support.concurrency = true; --Hive是否支持并发
+set hive.enforce.bucketing = true; --从Hive2.0开始不再需要  是否开启分桶功能
+set hive.exec.dynamic.partition.mode = nonstrict; --动态分区模式  非严格
+set hive.txn.manager = org.apache.hadoop.hive.ql.lockmgr.DbTxnManager; --
+set hive.compactor.initiator.on = true; --是否在Metastore实例上运行启动压缩合并
+set hive.compactor.worker.threads = 1; --在此metastore实例上运行多少个压缩程序工作线程。
+
+--2、创建Hive事务表
+create table trans_student(
+    id int,
+    name String,
+    age int
+)clustered by (id) into 2 buckets stored as orc TBLPROPERTIES('transactional'='true');
+
+-- 3、针对事务表进行insert update delete操作
+insert into trans_student (id, name, age)
+values (1,"allen",18);
+
+select * from trans_student;
+
+update trans_student
+set age = 20
+where id = 1;
+```
+
+### delete 操作
+
+```sql
+--1、开启事务配置（可以使用set设置当前session生效 也可以配置在hive-site.xml中）
+set hive.support.concurrency = true; --Hive是否支持并发
+set hive.enforce.bucketing = true; --从Hive2.0开始不再需要  是否开启分桶功能
+set hive.exec.dynamic.partition.mode = nonstrict; --动态分区模式  非严格
+set hive.txn.manager = org.apache.hadoop.hive.ql.lockmgr.DbTxnManager; --
+set hive.compactor.initiator.on = true; --是否在Metastore实例上运行启动压缩合并
+set hive.compactor.worker.threads = 1; --在此metastore实例上运行多少个压缩程序工作线程。
+
+--2、创建Hive事务表
+create table trans_student(
+   id int,
+   name String,
+   age int
+)clustered by (id) into 2 buckets stored as orc TBLPROPERTIES('transactional'='true');
+
+--3、针对事务表进行insert update delete操作
+insert into trans_student (id, name, age)
+values (1,"allen",18);
+
+select * from trans_student;
+
+delete from trans_student where id =1;
+```
+
+
+
+## Hive DQL Select 查询数据
+
+### 语法树
+
+![image-20210829231235909](./img/image-20210829231235909.png)
+
+- 从哪里查询取决于FROM关键字后面的table_reference。可以是普通物理表、视图、join结果或子查询结果。
+- 表名和列名**不区分大小写**。
+
+### 案例 - 美国Covid-19新冠数据之select查询
+
+准备一下select语法测试环境，在附件资料中有一份数据文件《us-covid19-counties.dat》，里面记录了2021-01-28美国各个县累计新冠确诊病例数和累计死亡病例数。
+
+ [us-covid19-counties.dat](img/us-covid19-counties.dat) 
+
+在Hive中创建表，加载该文件到表中：
+
+```sql
+-- step1:创建普通表t_usa_covid19
+drop table t_usa_covid19;
+CREATE TABLE t_usa_covid19(
+       count_date string,
+       county string,
+       state string,
+       fips int,
+       cases int,
+       deaths int)
+row format delimited fields terminated by ",";
+-- 将源数据load加载到t_usa_covid19表对应的路径下
+load data local inpath '/root/hivedata/us-covid19-counties.dat' into table t_usa_covid19;
+
+-- step2:创建一张分区表 基于count_date日期,state州进行分区
+CREATE TABLE t_usa_covid19_p(
+     county string,
+     fips int,
+     cases int,
+     deaths int)
+partitioned by(count_date string,state string)
+row format delimited fields terminated by ",";
+
+-- step3:使用动态分区插入将数据导入t_usa_covid19_p中
+set hive.exec.dynamic.partition.mode = nonstrict;
+
+insert into table t_usa_covid19_p partition (count_date,state)
+select county,fips,cases,deaths,count_date,state from t_usa_covid19;
+```
+
+
+
+
+
