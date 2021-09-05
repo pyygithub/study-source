@@ -486,10 +486,10 @@ Hive的数据都是**存储在HDFS**上的，默认有一个根目录，在 `hiv
 ${hive.metastore.warehouse.dir}/databasename.db
 ```
 
-比如，名为itcast的数据库存储路径为：
+比如，名为test的数据库存储路径为：
 
 ```
-/user/hive/warehouse/itcast.db
+/user/hive/warehouse/test.db
 ```
 
 #### Table 表
@@ -502,10 +502,10 @@ Hive中的表的数据在HDFS上的存储路径为：
 ${hive.metastore.warehouse.dir}/databasename.db/tablename
 ```
 
-比如,itcast的数据库下t_user表存储路径为：
+比如,test的数据库下t_user表存储路径为：
 
 ```
-/user/hive/warehouse/itcast.db/t_user
+/user/hive/warehouse/test.db/t_user
 ```
 
 ![image-20210815222636997](./img/image-20210815222636997.png)
@@ -630,8 +630,6 @@ hive根据`hive.metastore.uris` 参数值来判断，如果为空，则为本地
 
 启动Hive之前必须先启动Hadoop集群。特别要注意，需**等待HDFS安全模式关闭之后再启动运行Hive**。
 Hive不是分布式安装运行的软件，其分布式的特性主要**借由Hadoop**完成。包括**分布式存储、分布式计算**。
-
-
 
 ### Hadoop与Hive整合
 
@@ -847,8 +845,9 @@ nohup /export/server/hive/bin/hive --service metastore --hiveconf hive.root.logg
 
 Hive发展至今，总共历经了两代客户端工具。
 
-- 第一代客户端（deprecated不推荐使用）：**$HIVE_HOME/bin/hive,** 是一个 shellUtil。主要功能：一是可用于以交互或批处理模式运行Hive查询；二是用于Hive相关服务的启动，比如metastore服务。
-
+- 第一代客户端（deprecated不推荐使用）：**$HIVE_HOME/bin/hive,** 是一个 shellUtil。主要功能：
+  - 一是可用于以交互或批处理模式运行Hive查询；
+  - 二是用于Hive相关服务的启动，比如metastore服务。
 - 第二代客户端（recommended 推荐使用）：**$HIVE_HOME/bin/beeline**，是一个JDBC客户端，是**官方强烈推荐**使用的Hive命令行工具，和第一代客户端相比，性能加强安全性提高。
 
 <img src="./img/image-20210816222848104.png" alt="image-20210816222848104" style="zoom:50%;" />
@@ -879,89 +878,153 @@ HiveServer2通过Metastore服务读写元数据。所以在远程模式下，启
 
 ### 具体使用
 
-- **bin/hive 客户端**
+#### bin/hive 客户端
 
-  在hive安装包的bin目录下，有hive提供的第一代客户端 bin/hive。该客户端可以访问hive的metastore服务，从而达到操作hive的目的。
+在hive安装包的bin目录下，有hive提供的第一代客户端 bin/hive。该客户端可以访问hive的metastore服务，从而达到操作hive的目的。
 
-  友情提示：**如果您是远程模式部署，请手动启动运行metastore服务**。如果是内嵌模式和本地模式，直接运行bin/hive，metastore服务会内嵌一起启动。
+友情提示：**如果您是远程模式部署，请手动启动运行metastore服务**。如果是内嵌模式和本地模式，直接运行bin/hive，metastore服务会内嵌一起启动。
 
-  可以直接在启动Hive metastore服务的机器上使用bin/hive客户端操作，此时不需要进行任何配置。
+可以直接在启动Hive metastore服务的机器上使用bin/hive客户端操作，此时不需要进行任何配置。
 
-  ```shell
-  #远程模式 首先启动metastore服务
-  /export/server/hive/bin/hive --service metastore
-  
-  #克隆CRT会话窗口 使用hive client连接
-  /export/server/hive/bin/hive
-  ```
+```shell
+#远程模式 首先启动metastore服务
+/export/server/hive/bin/hive --service metastore
 
-  如果需要在其他机器上通过bin/hive访问hive metastore服务，只需要在该机器的hive-site.xml配置中添加metastore服务地址即可。
+#克隆CRT会话窗口 使用hive client连接
+/export/server/hive/bin/hive
+```
 
-  ```shell
-  #上传hive安装包到另一个机器上，比如node3：
-  cd /export/server/
-  tar zxvf apache-hive-3.1.2-bin.tar.gz
-  mv apache-hive-3.1.2-bin hive
-  
-  #解决hadoop、hive之间guava版本差异
-  cd /export/server/hive/
-  rm -rf lib/guava-19.0.jar
-  cp /export/server/hadoop-3.1.4/share/hadoop/common/lib/guava-27.0-jre.jar ./lib/
-  
-  #修改hive环境变量文件 添加Hadoop_HOME
-  cd /export/server/hive/conf
-  mv hive-env.sh.template hive-env.sh
-  vim hive-env.sh
-  export HADOOP_HOME=/export/server/hadoop-3.1.4
-  
-  #添加metastore服务地址
-  cd /export/server/hive/conf/
-  vim  hive-site.xml
-  ```
+如果需要在其他机器上通过bin/hive访问hive metastore服务，只需要在该机器的hive-site.xml配置中添加metastore服务地址即可。
 
-  ```xml
-  <configuration>
-  	<property>
-      <name>hive.metastore.uris</name>
-      <value>thrift://node1:9083</value>
-  	</property>
-  </configuration>
-  ```
+```shell
+#上传hive安装包到另一个机器上，比如node3：
+cd /export/server/
+tar zxvf apache-hive-3.1.2-bin.tar.gz
+mv apache-hive-3.1.2-bin hive
 
-  
+#解决hadoop、hive之间guava版本差异
+cd /export/server/hive/
+rm -rf lib/guava-19.0.jar
+cp /export/server/hadoop-3.1.4/share/hadoop/common/lib/guava-27.0-jre.jar ./lib/
 
-- **bin/beeline 客户端**
+#修改hive环境变量文件 添加Hadoop_HOME
+cd /export/server/hive/conf
+mv hive-env.sh.template hive-env.sh
+vim hive-env.sh
+export HADOOP_HOME=/export/server/hadoop-3.1.4
 
-  hive经过发展，推出了第二代客户端beeline，但是beeline客户端不是直接访问metastore服务的，而是需要单独启动hiveserver2服务。
+#添加metastore服务地址
+cd /export/server/hive/conf/
+vim  hive-site.xml
+```
 
-  在hive安装的服务器上，**首先启动metastore服务，然后启动hiveserver2服务**。
+```xml
+<configuration>
+	<property>
+    <name>hive.metastore.uris</name>
+    <value>thrift://node1:9083</value>
+	</property>
+</configuration>
+```
 
-  ```shell
-  #先启动metastore服务 然后启动hiveserver2服务
-  nohup /export/server/hive/bin/hive --service metastore &
-  nohup /export/server/hive/bin/hive --service hiveserver2 &
-  ```
+可以通过运行 "hive -H" 或者 "hive --help" 来查看命令行选项。
 
-  Beeline是JDBC的客户端，通过JDBC协议和Hiveserver2服务进行通信，协议的地址是：`jdbc:hive2://node1:10000`
+![image-20210904161555951](./img/image-20210904161555951.png)
 
-  ```shell
-  [root@node3 ~]# /export/server/hive/bin/beeline 
-  Beeline version 3.1.2 by Apache Hive
-  beeline> ! connect jdbc:hive2://node1:10000
-  Connecting to jdbc:hive2://node1:10000
-  Enter username for jdbc:hive2://node1:10000: root
-  Enter password for jdbc:hive2://node1:10000: 
-  Connected to: Apache Hive (version 3.1.2)
-  Driver: Hive JDBC (version 3.1.2)
-  Transaction isolation: TRANSACTION_REPEATABLE_READ
-  0: jdbc:hive2://node1:10000> 
-  ```
+![image-20210904161625661](./img/image-20210904161625661.png)
 
-  ![image-20210816225055505](./img/image-20210816225055505.png)
+##### 功能一：Batch Mode 批处理模式
+
+当使用-e或-f选项运行bin/hive时，它将以批处理模式执行SQL命令。
+
+所谓的批处理可以理解为**一次性执行，执行完毕退出**。
+
+```sql
+#-e
+$HIVE_HOME/bin/hive -e 'show databases'
+
+#-f
+cd ~
+#编辑一个sql文件 里面写上合法正确的sql语句
+vim hive.sql
+show databases;
+#执行 从客户端所在机器的本地磁盘加载文件
+$HIVE_HOME/bin/hive -f /root/hive.sql
+#也可以从其他文件系统加载sql文件执行
+$HIVE_HOME/bin/hive -f hdfs://<namenode>:<port>/hive-script.sql
+$HIVE_HOME/bin/hive -f s3://mys3bucket/s3-script.sql
+#使用静默模式将数据从查询中转储到文件中
+$HIVE_HOME/bin/hive -S -e 'select * from itheima.student' > a.txt
+```
+
+##### 功能二：Interactive Shell 交互式模式
+
+所谓交互式模式可以理解为**客户端和hive服务一直保持连接**，除非手动退出客户端。
+
+```sql
+/export/server/hive/bin/hive
+
+hive> show databases;
+OK
+default
+test
+itheima
+Time taken: 0.028 seconds, Fetched: 3 row(s)
+
+hive> use test;
+OK
+Time taken: 0.027 seconds
+
+hive> exit;
+```
+
+##### 功能三：启动Hive服务
+
+比如metastore服务和hiveserver2服务的启动。
+
+```sql
+#--service
+$HIVE_HOME/bin/hive --service metastore
+$HIVE_HOME/bin/hive --service hiveserver2
+
+#--hiveconf
+$HIVE_HOME/bin/hive --hiveconf hive.root.logger=DEBUG,console
+```
 
 
 
-## 使用体验
+#### bin/beeline 客户端
+
+hive经过发展，推出了第二代客户端beeline，但是beeline客户端不是直接访问metastore服务的，而是需要单独启动hiveserver2服务。
+
+在hive安装的服务器上，**首先启动metastore服务，然后启动hiveserver2服务**。
+
+```shell
+#先启动metastore服务 然后启动hiveserver2服务
+nohup /export/server/hive/bin/hive --service metastore &
+nohup /export/server/hive/bin/hive --service hiveserver2 &
+```
+
+Beeline是JDBC的客户端，通过JDBC协议和Hiveserver2服务进行通信，协议的地址是：`jdbc:hive2://node1:10000`
+
+```shell
+[root@node3 ~]# /export/server/hive/bin/beeline 
+Beeline version 3.1.2 by Apache Hive
+beeline> ! connect jdbc:hive2://node1:10000
+Connecting to jdbc:hive2://node1:10000
+Enter username for jdbc:hive2://node1:10000: root
+Enter password for jdbc:hive2://node1:10000: 
+Connected to: Apache Hive (version 3.1.2)
+Driver: Hive JDBC (version 3.1.2)
+Transaction isolation: TRANSACTION_REPEATABLE_READ
+0: jdbc:hive2://node1:10000> 
+```
+
+![image-20210816225055505](./img/image-20210816225055505.png)
+
+
+
+## Hive 使用体验
 
 ### Hive使用起来和MySQL差不多吗？
 
@@ -973,11 +1036,11 @@ HiveServer2通过Metastore服务读写元数据。所以在远程模式下，启
 
 ```sql
 --创建数据库
-create database itcast;
+create database test;
 --列出所有数据库
 show databases;
 --切换数据库
-use itcast;
+use test;
 --建表
 create table t_student(id int,name varchar(255));
 --插入一条数据
@@ -1076,7 +1139,7 @@ fields terminated by ',';
 --关于分隔符语法 后续学习展开
 
 #把user.txt文件从本地文件系统上传到hdfs
-hadoop fs -put user.txt /user/hive/warehouse/itcast.db/t_user_1/
+hadoop fs -put user.txt /user/hive/warehouse/test.db/t_user_1/
 
 --执行查询操作
 select * from t_user_1;
@@ -1092,7 +1155,7 @@ create table t_user_2(id int,name int,age varchar(255),city varchar(255))
 row format delimited
 fields terminated by ',';
 #把user.txt文件从本地文件系统上传到hdfs
-hadoop fs -put user.txt /user/hive/warehouse/itcast.db/t_user_2/
+hadoop fs -put user.txt /user/hive/warehouse/test.db/t_user_2/
 
 --执行查询操作
 select * from t_user_2;
@@ -1141,7 +1204,7 @@ select count(*) from t_user_1 where age > 20;
 
 
 
-## DDL 概述
+## Hive DDL 概述
 
 ### DDL 语法的作用
 
@@ -2080,7 +2143,7 @@ Hive中的视图（view）是一种虚拟表，只保存定义，不实际存储
 
 ```sql
 -- hive中有一张真实的基础表t_usa_covid19
-select * from itcast.t_usa_covid19;
+select * from test.t_usa_covid19;
 
 -- 1、创建视图
 create view v_usa_covid19 as select count_date, county,state,deaths from t_usa_covid19 limit 5;
@@ -2245,7 +2308,7 @@ show materialized views;
 -- 由于会命中物化视图，重写query查询物化视图，查询速度会加快（没有启动MR，只是普通的table scan）
 SELECT sdept, count(*) as sdept_cnt from student_trans group by sdept;
 
--- 5、查询执行计划可以发现 查询被自动重写为TableScan alias: itcast.student_trans_agg
+-- 5、查询执行计划可以发现 查询被自动重写为TableScan alias: test.student_trans_agg
 -- 转换成了对物化视图的查询  提高了查询效率
 explain SELECT sdept, count(*) as sdept_cnt from student_trans group by sdept;
 ```
@@ -3095,14 +3158,7 @@ delete from trans_student where id =1;
 
 ## Hive DQL Select 查询数据
 
-### 语法树
-
-![image-20210829231235909](./img/image-20210829231235909.png)
-
-- 从哪里查询取决于FROM关键字后面的table_reference。可以是普通物理表、视图、join结果或子查询结果。
-- 表名和列名**不区分大小写**。
-
-### 案例 - 美国Covid-19新冠数据之select查询
+### 数据环境准备
 
 准备一下select语法测试环境，在附件资料中有一份数据文件《us-covid19-counties.dat》，里面记录了2021-01-28美国各个县累计新冠确诊病例数和累计死亡病例数。
 
@@ -3140,7 +3196,1734 @@ insert into table t_usa_covid19_p partition (count_date,state)
 select county,fips,cases,deaths,count_date,state from t_usa_covid19;
 ```
 
+![image-20210904132711964](./img/image-20210904132711964.png)
+
+### 语法树
+
+<img src="./img/image-20210829235506602.png" alt="image-20210829235506602" style="zoom:40%;" />
+
+- 从哪里查询取决于FROM关键字后面的table_reference。可以是普通物理表、视图、join结果或子查询结果。
+- 表名和列名**不区分大小写**。
+
+### 基础查询
+
+#### select_expr
+
+select_expr表示检索查询返回的列，必须至少有一个select_expr。
+
+```sql
+-- select_expr
+-- 查询所有字段或者指定字段
+select * from t_usa_covid19_p;
+select county, cases, deaths from t_usa_covid19_p;
+
+-- 查询匹配正则表达式的所有字段
+SET hive.support.quoted.identifiers = none; -- 带反引号的名称被解释为正则表达式
+select `^c.*` from t_usa_covid19_p;
+
+-- 查询当前数据库
+select current_database(); --省去from关键字
+
+-- 查询使用函数
+select count(county) from t_usa_covid19_p;
+```
+
+#### All、DISTINCT
+
+用于指定查询返回结果中重复的行如何处理。
+
+如果没有给出这些选项，则**默认值为ALL**（返回所有匹配的行）。
+
+DISTINCT指定从结果集中删除重复的行。
+
+```SQL
+-- ALL DISTINCT
+-- 返回所有匹配的行
+select state from t_usa_covid19_p;
+-- 相当于
+select all state from t_usa_covid19_p;
+-- 返回所有匹配的行 去除重复的结果
+select distinct state from t_usa_covid19_p;
+-- 多个字段distinct 整体去重
+select distinct county, state from t_usa_covid19_p;
+```
+
+#### WHERE
+
+WHERE后面是一个布尔表达式，用于**查询过滤。**
+
+在WHERE表达式中，可以使用Hive支持的任何函数和运算符，但**聚合函数除外**。
+
+从Hive 0.13开始，WHERE子句支持某些类型的子查询。
+
+```sql
+select * from t_usa_covid19_p where state ="California" and deaths > 1000;
+select * from t_usa_covid19_p where 1 > 2;  -- 1 > 2 返回false
+select * from t_usa_covid19_p where 1 = 1;  -- 1 = 1 返回true
+
+-- where条件中使用函数 找出州名字母超过10个
+select * from t_usa_covid19_p where length(state) >10 ;
+
+-- WHERE子句支持子查询
+SELECT *
+FROM A
+WHERE A.a IN (SELECT foo FROM B);
+
+-- where条件中不能使用聚合函数
+-- 报错 SemanticException:Not yet supported place for UDAF 'sum'
+select state,sum(deaths)
+from t_usa_covid19_p 
+where sum(deaths) >100 group by state;
+```
+
+> **那么为什么不能在where子句中使用聚合函数呢？**
+
+> 因为聚合函数要使用它的前提是结果集已经确定。而where子句还处于“确定”结果集的过程中，因而不能使用聚合函数。
+
+#### 分区查询（分区裁剪）
+
+针对Hive分区表，在查询时可以**指定分区查询**，**减少全表扫描**，也叫做**分区裁剪**。
+
+所谓**分区裁剪**指：对分区表进行查询时，会检查WHERE子句或JOIN中的ON子句中是否存在对分区字段的过滤，如果存在，则仅**访问查询符合条件的分区**，即**裁剪掉没必要访问的分区**。
+
+```sql
+-- 找出来自加州，累计死亡人数大于1000的县 state字段就是分区字段 进行分区裁剪 避免全表扫描
+select * from t_usa_covid19_p 
+where state ="California" and deaths > 1000;
+
+-- 多分区裁剪
+select * from t_usa_covid19_p 
+where count_date = "2021-01-28" and state ="California" and deaths > 1000;
+```
+
+#### GROUP BY
+
+GROUP BY语句用于结合聚合函数，根据一个或多个列对结果集进行分组。
+
+注意：出现在GROUP BY中select_expr的字段：**要么是GROUP BY分组的字段**；**要么是被聚合函数应用的字段**。
+
+原因：**避免出现一个字段多个值的歧义。**
+
+- 分组字段出现select_expr中，一定没有歧义，因为就是基于该字段分组的，同一组中必相同；
+- 被聚合函数应用的字段，也没歧义，因为聚合函数的本质就是多进一出，最终返回一个结果。
+
+![image-20210904141521453](./img/image-20210904141521453.png)
+
+```SQL
+-- 根据state州进行分组
+
+-- SemanticException:Expression not in GROUP BY key 'deaths'
+-- deaths不是分组字段 报错
+-- state是分组字段 可以直接出现在select_expr中
+select state,deaths
+from t_usa_covid19_p 
+where count_date = "2021-01-28" 
+group by state;
+
+-- 被聚合函数应用
+select state,count(deaths)
+from t_usa_covid19_p 
+where count_date = "2021-01-28" 
+group by state;
+```
+
+#### HAVING
+
+在SQL中增加HAVING子句原因是，**WHERE关键字无法与聚合函数一起使用**。
+
+HAVING子句可以让我们筛选分组后的各组数据,并且可以在Having中使用聚合函数，因为此时where，group by已经执行结束，**结果集已经确定**。
+
+```SQL
+-- having
+-- 统计死亡病例数大于10000的州
+-- where语句中不能使用聚合函数 语法报错
+select state,sum(deaths)
+from t_usa_covid19_p
+where count_date = "2021-01-28" and sum(deaths) >10000 group by state;
+
+-- 先where分组前过滤（此处是分区裁剪），再进行group by分组（含聚合）， 
+-- 分组后每个分组结果集确定 再使用having过滤
+select state,sum(deaths)
+from t_usa_covid19_p
+where count_date = "2021-01-28"
+group by state
+having sum(deaths) > 10000;
+
+-- 这样写更好 即在group by的时候聚合函数已经作用得出结果 having直接引用结果过滤 不需要再单独计算一次了
+select state,sum(deaths) as cnts
+from t_usa_covid19_p
+where count_date = "2021-01-28"
+group by state
+having cnts> 10000;
+```
+
+#### HAVING与WHERE区别
+
+- having是在**分组后**对数据进行**过滤**
+- where是在**分组前**对数据进行过滤
+- having后面**可以使用聚合函数**
+- where后面不可以使用聚合函数
+
+#### LIMIT
+
+LIMIT用于**限制SELECT语句返回的行数**。
+
+LIMIT接受一个或两个数字参数，这两个参数都必须是**非负整数常量**。
+
+第一个参数指定要返回的**第一行的偏移量**（从 Hive 2.0.0开始），第二个参数指定要返回的**最大行数**。当给出**单个参数**时，它代表**最大行数**，并且**偏移量默认为0**。
+
+```SQL
+-- limit
+-- 没有限制返回2021.1.28 加州的所有记录
+select * from t_usa_covid19_p
+where count_date = "2021-01-28"
+and state ="California";
+
+-- 返回结果集的前5条
+select * from t_usa_covid19_p
+where count_date = "2021-01-28"
+and state ="California"
+limit 5;
+
+-- 返回结果集从第1行开始 共3行
+select * from t_usa_covid19_p
+where count_date = "2021-01-28"
+and state ="California"
+limit 2,3; -- 注意 第一个参数偏移量是从0开始的
+```
+
+#### Hive SQL 查询执行顺序
+
+在查询过程中执行顺序：**from > where > group（含聚合）> having >order > select；**
+
+- 聚合语句(sum,min,max,avg,count)要比having子句优先执行
+- where子句在查询过程中执行优先级别优先于聚合语句(sum,min,max,avg,count)
+
+结合下面SQL感受一下：
+
+```sql
+select state,sum(deaths) as cnts
+from t_usa_covid19_p
+where count_date = "2021-01-28"
+group by state
+having cnts> 10000;
+```
+
+### 高阶查询
+
+#### ORDER BY 
+
+Hive SQL中的ORDER BY语法类似于标准SQL语言中的ORDER BY语法，会对**输出的结果进行全局排序**。
+
+因此当底层使用MapReduce引擎执行的时候，只会有一个reducetask执行。如果输出的行数太大，会导致需要很长的时间才能完成全局排序。
+
+**默认**排序为**升序（ASC）**，也可以指定为DESC降序。
+
+在Hive 2.1.0和更高版本中，支持在ORDER BY子句中为每个列指定null类型结果排序顺序。
+
+- ASC顺序的默认空排序顺序为**NULLS FIRST**，而DESC顺序的默认空排序顺序为**NULLS LAST**。
+
+```SQL
+--- order by
+-- 根据字段进行排序
+select * from t_usa_covid19_p
+where count_date = "2021-01-28"
+and state ="California"
+order by deaths; -- 默认asc null first
+
+select * from t_usa_covid19_p
+where count_date = "2021-01-28"
+and state ="California"
+order by deaths desc; -- 指定desc null last
+
+-- 强烈建议将LIMIT与ORDER BY一起使用。避免数据集行数过大
+-- 当hive.mapred.mode设置为strict严格模式时，使用不带LIMIT的ORDER BY时会引发异常。
+select * from t_usa_covid19_p
+where count_date = "2021-01-28"
+  and state ="California"
+order by deaths desc
+limit 3;
+```
+
+#### CLUSTER BY
+
+根据指定字段将数据分组，每组内再根据该字段正序排序（只能正序, 不允许指定排序规则）。
+
+概况起来就是：根据同一个字段，**分且排序**。
+
+分组规则hash散列（分桶表规则一样）：Hash_Func(col_name) % reducetask个数
+
+分为几组取决于reducetask的个数
+
+![image-20210904145214001](./img/image-20210904145214001.png)
+
+```SQL
+-- cluster by
+select * from student;
+-- 不指定reduce task个数
+-- 日志显示：Number of reduce tasks not specified. Estimated from input data size: 1
+select * from student cluster by sno;
+
+-- 手动设置reduce task个数
+set mapreduce.job.reduces =2;
+select * from student cluster by sno;
+```
+
+![image-20210904150054758](./img/image-20210904150054758.png)
+
+​	  默认情况下，reduce task的个数由Hive在编译期间自己决定。
+
+![image-20210904150117534](./img/image-20210904150117534.png)
+
+​	  设置set mapreduce.job.reduces =2;
+
+![image-20210904150141710](./img/image-20210904150141710.png)
+
+​	  执行结果如下：分为两个部分，每个部分内正序排序。
+
+![image-20210904150237943](./img/image-20210904150237943.png)
+
+**CLUSTER BY 局限性**
+
+假如说，现在想法如下：把学生表数据根据性别分为两个部分，每个分组内根据年龄的倒序排序。你会发现CLUSTER BY无法完成了。而order by更不能在这里使用，因为它是全局排序，一旦使用order by，编译期间就会强制把reduce task个数设置为1。无法满足分组的需求。
+
+#### DISTRIBUTE BY + SORT BY
+
+DISTRIBUTE BY + SORT BY就相当于把CLUSTER BY的功能一分为二：
+
+- DISTRIBUTE BY负责根据指定字段分组；
+- SORT BY负责分组内排序规则。
+
+分组和排序的字段可以不同。如果DISTRIBUTE BY +SORT BY的字段一样，可以得出下列结论：
+
+​								**CLUSTER BY=DISTRIBUTE BY +SORT BY**
+
+案例：把学生表数据根据性别分为两个部分，每个分组内根据年龄的倒序排序。
+
+```sql
+select * from student distribute by sex sort by sage desc;
+```
+
+![image-20210904151350694](./img/image-20210904151350694.png)
+
+```sql
+-- 下面两个语句执行结果一样
+select * from student distribute by sno sort by sno;
+select * from student cluster by sno;
+```
+
+#### 排序总结
+
+- **order by全局排序**，因此**只有一个reducer，结果输出在一个文件中**，当输入规模大时，需要较长的计算时间。
+- distribute by根据指定字段将数据分组，算法是hash散列。sort by是在分组之后，每个组内局部排序。
+- cluster by既有分组，又有排序，但是两个字段只能是同一个字段。
+- 如果distribute和sort的字段是同一个时，此时，cluster by = distribute by + sort by
+
+#### Union 联合查询
+
+UNION用于将来自于**多个SELECT语句的结果合并为一个结果集**。
+
+![image-20210904152640374](./img/image-20210904152640374.png)
+
+- 使用DISTINCT关键字与只使用UNION默认值效果一样，都会删除重复行。1.2.0之前的Hive版本仅支持UNION ALL，在这种情况下不会消除重复的行。
+- 使用ALL关键字，不会删除重复行，结果集包括所有SELECT语句的匹配行（包括重复行）。
+- 每个select_statement返回的列的数量和名称必须相同。
+
+```sql
+-- union
+-- 使用DISTINCT关键字与使用UNION默认值效果一样，都会删除重复行。
+select num,name from student_local
+UNION
+select num,name from student_hdfs;
+-- 和上面一样
+select num,name from student_local
+UNION DISTINCT
+select num,name from student_hdfs;
+
+-- 使用ALL关键字会保留重复行。
+select num,name from student_local
+UNION ALL
+select num,name from student_hdfs;
+
+-- 如果要将ORDER BY，SORT BY，CLUSTER BY，DISTRIBUTE BY或LIMIT应用于单个SELECT
+-- 请将子句放在括住SELECT的括号内
+SELECT sno,sname FROM (select sno,sname from student_local LIMIT 2) subq1
+UNION
+SELECT sno,sname FROM (select sno,sname from student_hdfs LIMIT 3) subq2
+
+-- 如果要将ORDER BY，SORT BY，CLUSTER BY，DISTRIBUTE BY或LIMIT子句应用于整个UNION结果
+-- 请将ORDER BY，SORT BY，CLUSTER BY，DISTRIBUTE BY或LIMIT放在最后一个之后。
+select sno,sname from student_local
+UNION
+select sno,sname from student_hdfs
+order by sno desc;
+```
+
+#### 子查询
+
+##### from 子句中子查询
+
+在Hive0.12版本，仅在FROM子句中支持子查询。
+
+- 必须要给子查询一个名称，因为FROM子句中的每个表都必须有一个名称。子查询返回结果中的列必须具有唯一的名称。子查询返回结果中的列在外部查询中可用，就像真实表的列一样。子查询也可以是带有UNION的查询表达式。
+
+Hive支持任意级别的子查询，也就是所谓的**嵌套子查询**。
+
+Hive 0.13.0和更高版本中的子查询名称之前可以包含可选关键字AS。
+
+```sql
+-- from子句中子查询（Subqueries）
+-- 子查询
+SELECT num
+FROM (
+         select num,name from student_local
+     ) tmp;
+
+-- 包含UNION ALL的子查询的示例
+SELECT t3.name
+FROM (
+         select num,name from student_local
+         UNION distinct
+         select num,name from student_hdfs
+     ) t3;
+```
+
+##### where 子句中子查询
+
+从Hive 0.13开始，WHERE子句支持下述类型的子查询：
+
+- 不相关子查询：该子查询不引用父查询中的列，可以将查询结果视为IN和NOT IN语句的常量；
+- 相关子查询：子查询引用父查询中的列；
+
+```sql
+-- where子句中子查询（Subqueries）
+-- 不相关子查询，相当于IN、NOT IN,子查询只能选择一个列。
+--（1）执行子查询，其结果不被显示，而是传递给外部查询，作为外部查询的条件使用。
+--（2）执行外部查询，并显示整个结果。　　
+SELECT *
+FROM student_hdfs
+WHERE student_hdfs.num IN (select num from student_local limit 2);
+
+-- 相关子查询，指EXISTS和NOT EXISTS子查询
+-- 子查询的WHERE子句中支持对父查询的引用
+SELECT A
+FROM T1
+WHERE EXISTS (SELECT B FROM T2 WHERE T1.X = T2.Y);
+```
 
 
 
+#### Common Table Expressions（CTE）
 
+**公用表表达式（CTE）**是一个临时结果集：该结果集是从WITH子句中指定的简单查询派生而来的，紧接在SELECT或INSERT关键字之前。
+
+CTE仅在**单个语句的执行范围内**定义。
+
+CTE可以在 SELECT，INSERT， CREATE TABLE AS SELECT或CREATE VIEW AS SELECT语句中使用。
+
+![image-20210904153339265](./img/image-20210904153339265.png)
+
+```sql
+-- 选择语句中的CTE
+with q1 as (select sno,sname,sage from student where sno = 95002)
+select *
+from q1;
+
+-- from风格
+with q1 as (select sno,sname,sage from student where sno = 95002)
+from q1
+select *;
+
+-- chaining CTEs 链式
+with q1 as ( select * from student where sno = 95002),
+     q2 as ( select sno,sname,sage from q1)
+select * from (select sno from q2) a;
+
+
+-- union案例
+with q1 as (select * from student where sno = 95002),
+     q2 as (select * from student where sno = 95004)
+select * from q1 union all select * from q2;
+
+--视图，CTAS和插入语句中的CTE
+-- insert
+create table s1 like student;
+
+with q1 as ( select * from student where sno = 95002)
+from q1
+insert overwrite table s1
+select *;
+
+select * from s1;
+
+-- ctas
+create table s2 as
+with q1 as ( select * from student where sno = 95002)
+select * from q1;
+
+-- view
+create view v1 as
+with q1 as ( select * from student where sno = 95002)
+select * from q1;
+
+select * from v1;
+```
+
+### join 连接查询
+
+#### join概念回顾
+
+根据数据库的**三范式设计**要求和日常工作习惯来说，我们通常不会设计一张大表把所有类型的数据都放在一起，而是**不同类型的数据设计不同的表**存储。
+
+比如在设计一个订单数据表的时候，可以将客户编号作为一个外键和订单表建立相应的关系。而不可以在订单表中添加关于客户其它信息（比如姓名、所属公司等）的字段。
+
+![image-20210904153604476](./img/image-20210904153604476.png)
+在这种情况下，有时需要基于多张表查询才能得到最终完整的结果；
+
+join语法的出现是**用于根据两个或多个表中的列之间的关系，从这些表中共同组合查询数据**。
+
+#### join语法规则
+
+在Hive中，当下版本3.1.2总共支持6种join语法。分别是：
+
+- **inner join（内连接）**
+
+- **left join（左连接）**
+
+- right join（右连接）
+
+- full outer join（全外连接）
+- left semi join（左半开连接）
+- cross join（交叉连接，也叫做笛卡尔乘积）
+
+#### 语法树
+
+![image-20210904153839018](./img/image-20210904153839018.png)
+
+- **table_reference：**是join查询中使用的表名，也可以是子查询别名（查询结果当成表参与join）。
+- **table_factor：**与table_reference相同,是联接查询中使用的表名,也可以是子查询别名。
+- **join_condition：**join查询关联的条件，如果在两个以上的表上需要连接，则使用AND关键字。
+
+#### join语法丰富化
+
+Hive中join语法从面世开始其实并不丰富，不像在RDBMS中那么灵活。
+
+从Hive 0.13.0开始，**支持隐式联接表示法**（请参阅HIVE-5558）。允许FROM子句连接以逗号分隔的表列表，而省略JOIN关键字。例如：
+
+```sql
+SELECT *
+FROM table1 t1, table2 t2, table3 t3
+WHERE t1.id = t2.id AND t2.id = t3.id AND t1.zipcode = '02535';
+```
+
+从Hive 2.2.0开始，支持ON子句中的复杂表达式，支持不相等连接（请参阅HIVE-15211和HIVE-15251）。在此之前，Hive不支持不是相等条件的联接条件。例如：
+
+```sql
+SELECT a.* FROM a JOIN b ON (a.id = b.id)
+SELECT a.* FROM a JOIN b ON (a.id = b.id AND a.department = b.department)
+SELECT a.* FROM a LEFT OUTER JOIN b ON (a.id <> b.id)
+```
+
+#### join查询数据环境准备
+
+为了更好的练习、学习掌握Hive中的join语法，下面我们去创建3张表并且加载数据到表中。
+
+表1：employee 员工表；
+表2：employee_address 员工住址信息表；
+表3：employee_connection 员工联系方式表；
+
+```sql
+-- table1: 员工表
+CREATE TABLE employee(
+   id int,
+   name string,
+   deg string,
+   salary int,
+   dept string
+ ) row format delimited
+fields terminated by ',';
+
+-- table2:员工住址信息表
+CREATE TABLE employee_address (
+    id int,
+    hno string,
+    street string,
+    city string
+) row format delimited
+fields terminated by ',';
+
+-- table3:员工联系方式表
+CREATE TABLE employee_connection (
+    id int,
+    phno string,
+    email string
+) row format delimited
+fields terminated by ',';
+
+-- 加载数据到表中
+load data local inpath '/root/hivedata/employee.txt' into table employee;
+
+load data local inpath '/root/hivedata/employee_address.txt' into table employee_address;
+
+load data local inpath '/root/hivedata/employee_connection.txt' into table employee_connection;
+```
+
+![image-20210904154810623](./img/image-20210904154810623.png)
+
+#### inner join 内连接
+
+**内连接**是最常见的一种连接，它也被称为普通连接，其中inner可以省略：inner join == join ；
+
+只有进行连接的两个表中都存在与连接条件相匹配的数据才会被留下来。
+
+![image-20210904154856305](./img/image-20210904154856305.png)
+
+![image-20210904155627123](./img/image-20210904155627123.png)
+
+#### left join 左连接
+
+left join中文叫做是**左外连接**(Left Outer Join)或者左连接，其中outer可以省略，left outer join是早期的写法。
+
+left join的核心就在于left左。左指的是join关键字左边的表，简称左表。
+
+通俗解释：join时以左表的全部数据为准，右边与之关联；左表数据全部返回，右表关联上的显示返回，关联不上的显示null返回。
+
+![image-20210904155136765](./img/image-20210904155136765.png)
+
+![image-20210904155724528](./img/image-20210904155724528.png)
+
+#### right join 右连接
+
+right join中文叫做是右外连接(Right Outer Jion)或者右连接，其中outer可以省略。
+
+right join的核心就在于Right右。右指的是join关键字右边的表，简称右表。
+
+通俗解释：**join时以右表的全部数据为准，左边与之关联；右表数据全部返回，左表关联上的显示返回，关联不上的显示null返回。**
+
+很明显，right join和left join之间很相似，重点在于以哪边为准，也就是一个方向的问题。
+
+![image-20210904155320018](./img/image-20210904155320018.png)
+
+![image-20210904155748861](./img/image-20210904155748861.png)
+
+#### full outer join 全外连接
+
+**full outer join 等价 full join**  ,中文叫做**全外连接**或者外连接。
+
+包含左、右两个表的全部行，不管另外一边的表中是否存在与它们匹配的行；
+
+在功能上：等价于对这两个数据集合分别进行左外连接和右外连接，然后再使用**消去重复行**的操作将上述两个结果集合并为一个结果集。
+
+![image-20210904155501610](./img/image-20210904155501610.png)
+
+![image-20210904155825583](./img/image-20210904155825583.png)
+
+#### left semi join 左半开连接
+
+左半开连接（LEFT SEMI JOIN）会**返回左边表的记录**，前提是其记录对于右边的表**满足ON**语句中的**判定条件**。
+
+从效果上来看有点像inner join之后只返回左表的结果。
+
+![image-20210904160024141](./img/image-20210904160024141.png)
+
+#### cross join 交叉连接
+
+**交叉连接**cross join，将会返回被连接的两个表的笛卡尔积，返回结果的行数等于两个表行数的乘积。对于大表来说，cross join慎用。
+
+在SQL标准中定义的cross join就是无条件的inner join。返回两个表的笛卡尔积,无需指定关联键。
+
+在HiveSQL语法中，cross join 后面可以跟where子句进行过滤，或者on条件过滤。
+
+![image-20210904160158015](./img/image-20210904160158015.png)
+
+#### join 连接主要事项
+
+- join在WHERE条件之前进行
+
+- 允许使用复杂的联接表达式,支持非等值连接
+
+  ![image-20210904160511267](./img/image-20210904160511267.png)
+
+- 同一查询中可以连接2个以上的表
+
+  ![image-20210904160441034](./img/image-20210904160441034.png)
+
+- 如果每个表在联接子句中使用相同的列，则Hive将多个表上的联接转换为单个MR作业
+
+  ![image-20210904160639928](./img/image-20210904160639928.png)
+
+- 在join的时候，可以通过语法STREAMTABLE提示指定要流式传输的表。如果省略STREAMTABLE提示，则Hive将流式传输最右边的表
+
+  ![image-20210904160903935](./img/image-20210904160903935.png)
+
+- 如果除一个要连接的表之外的所有表都很小，则可以将其作为仅map作业执行（mapjoin）
+
+  ![image-20210904160952831](./img/image-20210904160952831.png)
+
+- join时的最后一个表会通过reducer流式传输，并在其中缓冲之前的其他表，因此，将大表放置在最后有助于减少reducer阶段缓存数据所需要的内存
+
+  ![image-20210904160715434](./img/image-20210904160715434.png)
+
+## Hive 内置运算符
+
+### 概述
+
+整体上，Hive支持的运算符可以分为三大类：**关系运算**、**算术运算**、**逻辑运算**。
+
+官方参考文档：https://cwiki.apache.org/confluence/display/Hive/LanguageManual+UDF
+
+也可以使用下述方式查看运算符的使用方式：
+
+```sql
+-- 显示所有的函数和运算符
+show functions;
+-- 查看运算符或者函数的使用说明
+describe function +;
+-- 使用extended 可以查看更加详细的使用说明
+describe function extended +;
+```
+
+### 关系运算符
+
+**关系运算符**是二元运算符，执行的是两个操作数的比较运算。每个关系运算符都返回boolean类型结果（TRUE或FALSE）。
+
+![image-20210904163715786](./img/image-20210904163715786.png)
+
+```sql
+-- is null空值判断
+select 1 from dual where '123456' is null;
+
+--is not null 非空值判断
+select 1 from dual where '123456' is not null;
+
+--like比较： _表示任意单个字符 %表示任意数量字符
+--否定比较： NOT A like B
+select 1 from dual where 'it_123456' like 'it_';
+select 1 from dual where 'it_123456' like 'it%';
+select 1 from dual where not 'hadoop_123456' like 'hadoo_';
+
+--rlike：确定字符串是否匹配正则表达式，是REGEXP_LIKE()的同义词。
+select 1 from dual where 'i1245t' rlike '^i.*t$';
+select 1 from dual where '123456' rlike '^\\d+$';  --判断是否全为数字
+select 1 from dual where '123456aa' rlike '^\\d+$';
+
+--regexp：功能与rlike相同 用于判断字符串是否匹配正则表达式
+select 1 from dual where 'i1245t' regexp '^i.*t$';
+```
+
+### 算术运算符
+
+**算术运算符**操作数必须是数值类型。 分为一元运算符和二元运算符：
+
+- 一元运算符,只有一个操作数; 
+
+- 二元运算符有两个操作数,运算符在两个操作数之间。
+
+![image-20210904164004032](./img/image-20210904164004032.png)
+
+```sql
+-- 取整操作: div  给出将A除以B所得的整数部分。例如17 div 3得出5。
+select 17 div 3;
+
+-- 取余操作: %  也叫做取模  A除以B所得的余数部分
+select 17 % 3;
+
+-- 位与操作: &  A和B按位进行与操作的结果。 与表示两个都为1则结果为1
+select 4 & 8 from dual;  --4转换二进制：0100 8转换二进制：1000
+select 6 & 4 from dual;  --4转换二进制：0100 6转换二进制：0110
+
+-- 位或操作: |  A和B按位进行或操作的结果  或表示有一个为1则结果为1
+select 4 | 8 from dual;
+select 6 | 4 from dual;
+
+-- 位异或操作: ^ A和B按位进行异或操作的结果 异或表示两个不同则结果为1
+select 4 ^ 8 from dual;
+select 6 ^ 4 from dual;
+```
+
+### 逻辑运算符
+
+语法：SELECT … FROM table WHERE [NOT] EXISTS (subquery)
+
+
+
+功能：将主查询的数据，放到子查询中做条件验证，根据验证结果（TRUE 或 FALSE）来决定主查询的数据结果是否得以保留。
+
+![image-20210904164100297](./img/image-20210904164100297.png)
+
+```sql
+-- 与操作: A AND B   如果A和B均为TRUE，则为TRUE，否则为FALSE。如果A或B为NULL，则为NULL。
+select 1 from dual where 3>1 and 2>1;
+-- 或操作: A OR B   如果A或B或两者均为TRUE，则为TRUE，否则为FALSE。
+select 1 from dual where 3>1 or 2!=2;
+-- 非操作: NOT A 、!A   如果A为FALSE，则为TRUE；如果A为NULL，则为NULL。否则为FALSE。
+select 1 from dual where not 2>1;
+select 1 from dual where !2=1;
+-- 在:A IN (val1, val2, ...)  如果A等于任何值，则为TRUE。
+select 1 from dual where 11 in(11,22,33);
+-- 不在:A NOT IN (val1, val2, ...) 如果A不等于任何值，则为TRUE
+select 1 from dual where 11 not in(22,33,44);
+-- 逻辑是否存在: [NOT] EXISTS (subquery) 如果子查询返回至少一行，则为TRUE。
+select A.* from A
+where exists (select B.id from B where A.id = B.id)
+```
+
+## Hive 函数入门
+
+### 概述
+
+如同RDBMS中标准SQL语法一样，Hive SQL也内建了不少函数，满足于用户在不同场合下的数据分析需求，提高开发SQL数据分析的效率。
+
+使用`show functions`查看当下可用的所有函数；通过 `describe function extended funcname`来查看函数的使用方式。
+
+### 分类标准
+
+Hive的函数分为两大类：**内置函数**（Built-in Functions）、**用户定义函数UDF**（User-Defined Functions）：
+
+- 内置函数可分为：**数值类型函数**、**日期类型函数**、**字符串类型函数**、**集合函数**、**条件函数**等；
+- 用户定义函数根据输入输出的行数可分为3类：UDF、UDAF、UDTF。
+
+![image-20210904164726917](./img/image-20210904164726917.png)
+
+### 内置函数分类
+
+**内置函数（build-in）**指的是Hive开发实现好，直接可以使用的函数,也叫做内建函数。
+
+官方文档地址：https://cwiki.apache.org/confluence/display/Hive/LanguageManual+UDF
+
+内置函数根据应用归类整体可以分为8大种类型，我们将对其中重要的，使用频率高的函数使用进行详细讲解。
+
+> 查询函数使用说明：**describe function extended 函数名**;
+
+#### String Functions 字符串函数
+
+主要针对字符串数据类型进行操作，比如下面这些：
+
+![image-20210904165128946](./img/image-20210904165128946.png)
+
+```sql
+------------String Functions 字符串函数------------
+
+-- 字符串长度函数：length(str | binary)
+select length("angelababy");
+
+-- 字符串反转函数：reverse
+select reverse("angelababy");
+
+-- 字符串连接函数：concat(str1, str2, ... strN)
+select concat("angela","baby");
+
+-- 带分隔符字符串连接函数：concat_ws(separator, [string | array(string)]+)
+select concat_ws('.', 'www', array('test', 'cn'));
+
+-- 字符串截取函数：substr(str, pos[, len]) 或者  substring(str, pos[, len])
+select substr("angelababy",-2); --pos是从1开始的索引，如果为负数则倒着数
+select substr("angelababy",2,2);
+
+-- 字符串转大写函数：upper,ucase
+select upper("angelababy");
+select ucase("angelababy");
+
+-- 字符串转小写函数：lower,lcase
+select lower("ANGELABABY");
+select lcase("ANGELABABY");
+
+-- 去空格函数：trim 去除左右两边的空格
+select trim(" angelababy ");
+
+-- 左边去空格函数：ltrim
+select ltrim(" angelababy ");
+
+-- 右边去空格函数：rtrim
+select rtrim(" angelababy ");
+
+-- 正则表达式替换函数：regexp_replace(str, regexp, rep)
+select regexp_replace('100-200', '(\\d+)', 'num');
+
+-- 正则表达式解析函数：regexp_extract(str, regexp[, idx]) 提取正则匹配到的指定组内容
+select regexp_extract('100-200', '(\\d+)-(\\d+)', 2);
+
+-- URL解析函数：parse_url 注意要想一次解析出多个 可以使用parse_url_tuple这个UDTF函数
+select parse_url('http://www.test.cn/path/p1.php?query=1', 'HOST');
+
+-- json解析函数：get_json_object
+-- 空格字符串函数：space(n) 返回指定个数空格
+select space(4);
+
+-- 重复字符串函数：repeat(str, n) 重复str字符串n次
+select repeat("angela",2);
+
+-- 首字符ascii函数：ascii
+select ascii("angela");  --a对应ASCII 97
+
+-- 左补足函数：lpad
+select lpad('hi', 5, '??');  --???hi
+select lpad('hi', 1, '??');  --h
+
+-- 右补足函数：rpad
+select rpad('hi', 5, '??');
+
+-- 分割字符串函数: split(str, regex)
+select split('apache hive', '\\s+');
+
+-- 集合查找函数: find_in_set(str,str_array)
+select find_in_set('a','abc,b,ab,c,def');
+```
+
+#### Date Functions 日期函数
+
+主要针对时间、日期数据类型进行操作，比如下面这些：
+
+![image-20210904165220761](./img/image-20210904165220761.png)
+
+```sql
+-- 获取当前日期: current_date
+select current_date();
+
+-- 获取当前时间戳: current_timestamp
+-- 同一查询中对current_timestamp的所有调用均返回相同的值。
+select current_timestamp();
+
+-- 获取当前UNIX时间戳函数: unix_timestamp
+select unix_timestamp();
+
+-- UNIX时间戳转日期函数: from_unixtime
+select from_unixtime(1618238391);
+select from_unixtime(0, 'yyyy-MM-dd HH:mm:ss');
+
+-- 日期转UNIX时间戳函数: unix_timestamp
+select unix_timestamp("2011-12-07 13:01:03");
+
+-- 指定格式日期转UNIX时间戳函数: unix_timestamp
+select unix_timestamp('20111207 13:01:03','yyyyMMdd HH:mm:ss');
+
+-- 抽取日期函数: to_date
+select to_date('2009-07-30 04:17:52');
+
+-- 日期转年函数: year
+select year('2009-07-30 04:17:52');
+
+-- 日期转月函数: month
+select month('2009-07-30 04:17:52');
+
+-- 日期转天函数: day
+select day('2009-07-30 04:17:52');
+
+-- 日期转小时函数: hour
+select hour('2009-07-30 04:17:52');
+
+-- 日期转分钟函数: minute
+select minute('2009-07-30 04:17:52');
+
+-- 日期转秒函数: second
+select second('2009-07-30 04:17:52');
+
+-- 日期转周函数: weekofyear 返回指定日期所示年份第几周
+select weekofyear('2009-07-30 04:17:52');
+
+-- 日期比较函数: datediff  日期格式要求'yyyy-MM-dd HH:mm:ss' or 'yyyy-MM-dd'
+select datediff('2012-12-08','2012-05-09');
+
+-- 日期增加函数: date_add
+select date_add('2012-02-28',10);
+
+-- 日期减少函数: date_sub
+select date_sub('2012-01-1',10);
+```
+
+#### Mathematical Functions 数学函数
+
+主要针对数值类型的数据进行数学计算，比如下面这些：
+
+![image-20210904165415177](./img/image-20210904165415177.png)
+
+```sql
+-- 取整函数: round  返回double类型的整数值部分 （遵循四舍五入）
+select round(3.1415926);
+
+-- 指定精度取整函数: round(double a, int d) 返回指定精度d的double类型
+select round(3.1415926,4);
+
+-- 向下取整函数: floor
+select floor(3.1415926); -- 3
+select floor(-3.1415926);-- -4
+
+-- 向上取整函数: ceil
+select ceil(3.1415926); -- 4
+select ceil(-3.1415926); -- -3
+
+-- 取随机数函数: rand 每次执行都不一样 返回一个0到1范围内的随机数
+select rand();
+
+-- 指定种子取随机数函数: rand(int seed) 得到一个稳定的随机数序列(种子一样，每次都是同一个随机数)
+select rand(2);
+
+-- 二进制函数:  bin(BIGINT a)
+select bin(18);
+
+-- 进制转换函数: conv(BIGINT num, int from_base, int to_base)
+select conv(17,10,16);
+
+-- 绝对值函数: abs
+select abs(-3.9);
+```
+
+#### Collection Functions 集合函数
+
+主要针对集合这样的复杂数据类型进行操作，比如下面这些：
+
+![image-20210904165453421](./img/image-20210904165453421.png)
+
+```sql
+-- 集合元素size函数: size(Map<K.V>) size(Array<T>)
+select size(`array`(11,22,33));
+select size(`map`("id",10086,"name","zhangsan","age",18));
+
+-- 取map集合keys函数: map_keys(Map<K.V>)
+select map_keys(`map`("id",10086,"name","zhangsan","age",18));
+
+-- 取map集合values函数: map_values(Map<K.V>)
+select map_values(`map`("id",10086,"name","zhangsan","age",18));
+
+-- 判断数组是否包含指定元素: array_contains(Array<T>, value)
+select array_contains(`array`(11,22,33),11);
+select array_contains(`array`(11,22,33),66);
+
+-- 数组排序函数:sort_array(Array<T>)
+select sort_array(`array`(12,2,32));
+```
+
+#### Conditional Functions 条件函数
+
+主要用于条件判断、逻辑判断转换这样的场合
+
+![image-20210904165652250](./img/image-20210904165652250.png)
+
+```sql
+-- 使用之前课程创建好的student表数据
+select * from student limit 3;
+
+-- if条件判断: if(boolean testCondition, T valueTrue, T valueFalseOrNull)
+select if(1=2,100,200);
+select if(sex ='男','M','W') from student limit 3;
+
+-- 空判断函数: isnull( a )
+select isnull("allen");
+select isnull(null);
+
+-- 非空判断函数: isnotnull ( a )
+select isnotnull("allen");
+select isnotnull(null);
+
+-- 空值转换函数: nvl(T value, T default_value)
+select nvl("allen","test");
+select nvl(null,"test");
+
+-- 非空查找函数: COALESCE(T v1, T v2, ...)
+-- 返回参数中的第一个非空值；如果所有值都为NULL，那么返回NULL
+select COALESCE(null,11,22,33);
+select COALESCE(null,null,null,33);
+select COALESCE(null,null,null);
+
+-- 条件转换函数: CASE a WHEN b THEN c [WHEN d THEN e]* [ELSE f] END
+select case 100 when 50 then 'tom' when 100 then 'mary' else 'tim' end;
+select case sex when '男' then 'man' else 'women' end from student limit 3;
+
+-- nullif( a, b ):
+-- 果a = b，则返回NULL；否则返回一个
+select nullif(11,11);
+select nullif(11,12);
+
+-- assert_true(condition)
+-- 如果'condition'不为真，则引发异常，否则返回null
+SELECT assert_true(11 >= 0);
+SELECT assert_true(-1 >= 0);
+```
+
+#### Type Conversion Functions 类型转换函数
+
+主要用于显式的数据类型转换：
+
+```sql
+--任意数据类型之间转换:cast
+select cast(12.14 as bigint);
+select cast(12.14 as string);
+```
+
+#### Data Masking Functions 数据脱敏函数
+
+主要完成对数据脱敏转换功能，屏蔽原始数据，主要如下：
+
+![image-20210904165938142](./img/image-20210904165938142.png)
+
+```sql
+-- mask
+-- 将查询回的数据，默认转换规则：大写字母转换为X，小写字母转换为x，数字转换为n。
+select mask("abc123DEF");
+select mask("abc123DEF",'-','.','^'); --自定义替换的字母
+
+-- mask_first_n(string str[, int n]
+-- 对前n个进行脱敏替换
+select mask_first_n("abc123DEF",4);
+
+-- mask_last_n(string str[, int n])
+select mask_last_n("abc123DEF",4);
+
+-- mask_show_first_n(string str[, int n])
+-- 除了前n个字符，其余进行掩码处理
+select mask_show_first_n("abc123DEF",4);
+
+-- mask_show_last_n(string str[, int n])
+select mask_show_last_n("abc123DEF",4);
+
+-- mask_hash(string|char|varchar str)
+-- 返回字符串的hash编码。
+select mask_hash("abc123DEF");
+```
+
+#### Misc. Functions 其他杂项函数
+
+![image-20210904170646637](./img/image-20210904170646637.png)
+
+```sql
+-- hive调用java方法: java_method(class, method[, arg1[, arg2..]])
+select java_method("java.lang.Math","max",11,22);
+
+-- 反射函数: reflect(class, method[, arg1[, arg2..]])
+select reflect("java.lang.Math","max",11,22);
+
+-- 取哈希值函数:hash
+select hash("allen");
+
+-- current_user()、logged_in_user()、current_database()、version()
+
+-- SHA-1加密: sha1(string/binary)
+select sha1("allen");
+
+-- SHA-2家族算法加密：sha2(string/binary, int)  (SHA-224, SHA-256, SHA-384, SHA-512)
+select sha2("allen",224);
+select sha2("allen",512);
+
+-- crc32加密:
+select crc32("allen");
+
+-- MD5加密: md5(string/binary)
+select md5("allen");
+```
+
+
+
+### 用户自定义函数分类
+
+**用户自定义函数简称UDF**，源自于英文user-defined function。
+
+根据**函数输入输出的行数**可以分为3类，分别是：
+
+- UDF（User-Defined-Function）普通函数，一进一出
+- UDAF（User-Defined Aggregation Function）聚合函数，多进一出
+- UDTF（User-Defined Table-Generating Functions）表生成函数，一进多出
+
+![image-20210904171633489](./img/image-20210904171633489.png)
+
+#### UDF 普通函数
+
+UDF（User-Defined-Function）普通函数
+
+特点：是**一进一出**，也就是输入一行输出一行。
+
+比如round这样的取整函数，接收一行数据，输出的还是一行数据。
+
+![image-20210904171738233](./img/image-20210904171738233.png)
+
+#### UDAF 聚合函数
+
+**UDAF 聚合函数**，A所代表的单词就是Aggregation聚合的意思。
+
+特点：**多进一出**，也就是输入多行输出一行。
+
+比如count、sum这样的函数。
+
+![image-20210904171905083](./img/image-20210904171905083.png)
+
+#### UDTF 表生成函数
+
+**UDTF 表生成函数**，T所代表的单词是Table-Generating表生成的意思。
+
+特点：是**一进多出**，也就是输入一行输出多行。
+
+这类型的函数作用**返回的结果类似于表**，同时，UDTF函数也是我们接触比较少的函数。
+比如explode函数。
+
+![image-20210904172018129](./img/image-20210904172018129.png)
+
+#### 案例：用户自定义UDF
+
+##### 需求
+
+> 开发Hive UDF实现手机号加密
+
+在企业中处理数据的时候，对于敏感数据往往需要进行脱敏处理。比如手机号。我们常见的处理方式是将手机号中间4位进行处理。
+
+Hive中没有这样的函数可以直接实现功能，虽然可以通过各种函数的嵌套调用最终也能实现，但是效率不高，现要求自定义开发实现Hive函数，满足上述需求。
+
+- 能够对输入数据进行非空判断、手机号位数判断
+- 能够实现校验手机号格式，把满足规则的进行处理
+- 对于不符合手机号规则的数据直接返回，不处理
+
+##### 实现步骤
+
+1. 写一个java类，继承UDF，并重载evaluate方法，方法中实现函数的业务逻辑；
+2. 重载意味着可以在一个java类中实现多个函数功能；
+3. 程序打成jar包，上传HS2服务器本地或者HDFS;
+4. 客户端命令行中添加jar包到Hive的classpath： `hive>add JAR /xxxx/udf.jar;`
+5. 注册成为临时函数（给UDF命名）：`create temporary function` 函数名 as 'UDF类全路径';
+6. HQL中使用函数。
+
+##### 代码实现
+
+**开发环境准备**
+
+IDEA中创建Maven工程，添加下述pom依赖，用于开发Hive UDF；
+
+完整pom.xml请参考课程附件资料
+
+pom.xml依赖：
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>org.apache.hive</groupId>
+        <artifactId>hive-exec</artifactId>
+        <version>3.1.2</version>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.hadoop</groupId>
+        <artifactId>hadoop-common</artifactId>
+        <version>3.1.4</version>
+    </dependency>
+</dependencies>
+<build>
+    <plugins>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-shade-plugin</artifactId>
+            <version>2.2</version>
+            <executions>
+                <execution>
+                    <phase>package</phase>
+                    <goals>
+                        <goal>shade</goal>
+                    </goals>
+                    <configuration>
+                        <filters>
+                            <filter>
+                                <artifact>*:*</artifact>
+                                <excludes>
+                                    <exclude>META-INF/*.SF</exclude>
+                                    <exclude>META-INF/*.DSA</exclude>
+                                    <exclude>META-INF/*.RSA</exclude>
+                                </excludes>
+                            </filter>
+                        </filters>
+                    </configuration>
+                </execution>
+            </executions>
+        </plugin>
+    </plugins>
+</build>
+```
+
+**业务代码：**
+
+```java
+package cn.test.hive.udf;
+
+import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.hive.ql.exec.UDF;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * @description: hive自定义函数UDF 实现对手机号中间4位进行****加密
+ * @author: Itcast
+ */
+public class EncryptPhoneNumber extends UDF {
+    /**
+     * 重载evaluate方法 实现函数的业务逻辑
+     * @param phoNum  入参：未加密手机号
+     * @return 返回：加密后的手机号字符串
+     */
+    public String evaluate(String phoNum){
+        String encryptPhoNum = null;
+        //手机号不为空 并且为11位
+        if (StringUtils.isNotEmpty(phoNum) && phoNum.trim().length() == 11 ) {
+            //判断数据是否满足中国大陆手机号码规范
+            String regex = "^(1[3-9]\\d{9}$)";
+            Pattern p = Pattern.compile(regex);
+            Matcher m = p.matcher(phoNum);
+            if (m.matches()) {//进入这里都是符合手机号规则的
+                //使用正则替换 返回加密后数据
+                encryptPhoNum = phoNum.trim().replaceAll("()\\d{4}(\\d{4})","$1****$2");
+            }else{
+                //不符合手机号规则 数据直接原封不动返回
+                encryptPhoNum = phoNum;
+            }
+        }else{
+            //不符合11位 数据直接原封不动返回
+            encryptPhoNum = phoNum;
+        }
+        return encryptPhoNum;
+    }
+}
+```
+
+##### 部署实例
+
+**打jar包上传服务器**
+
+![image-20210905165419573](./img/image-20210905165419573.png)
+
+![image-20210905165444134](./img/image-20210905165444134.png)
+
+把jar包上传到Hiveserver2服务运行所在机器的linux系统，或者HDFS文件系统。
+
+**添加到 Hive Classpath**
+
+在客户端使用命令把jar添加到classpath
+
+```sql
+0：jdbc:hive2://master:10000> add jar /root/hive-udf-1.0-SNAPSHOT.jar;
+```
+
+**注册临时函数**
+
+```sql
+0：jdbc:hive2://master:10000> create temporary function encrypt_phonum as 'cn.test.hive.udf.EncryptPhoneNumber';
+```
+
+**功能效果演示**
+
+![image-20210905165952591](./img/image-20210905165952591.png)
+
+
+
+## Hive 高阶函数
+
+### UDTF之explode函数
+
+对于UDTF表生成函数，很多人难以理解什么叫做输入一行，输出多行。
+
+为什么叫做表生成？能够产生表吗？下面我们就来学习Hive当做内置的一个非常著名的UDTF函数，名字叫做explode函数，中文戏称之为“**爆炸函数**”，可以炸开数据。
+
+#### 功能介绍
+
+- explode接收**map、array类型**的数据作为**输入**，然后把输入数据中的每个元素拆开变成一行数据，一个元素一行。
+- explode执行效果正好满足于**输入一行输出多行**，所有叫做UDTF函数。
+
+![image-20210905170523011](./img/image-20210905170523011.png)
+
+#### explode 函数使用
+
+一般情况下，explode函数可以直接单独使用即可；也可以根据业务需要结合lateral view侧视图一起使用。
+
+- explode(array) 将array里的每个元素生成一行；
+
+- explode(map)   将map里的每一对元素作为一行，其中key为一列，value为一列；
+
+![image-20210905171119073](./img/image-20210905171119073.png)
+
+#### 案例: NBA总冠军球队名单分析
+
+1. 练习explode函数的使用
+2. 感悟什么叫做UDTF表生成函数
+3. 发现UDTF函数使用限制
+
+##### 业务需求
+
+有一份数据《The_NBA_Championship.txt》，关于部分年份的NBA总冠军球队名单；
+
+第一个字段表示球队名称，第二个字段是获取总冠军的年份；
+
+字段之间以，分割；总冠军年份之间以|进行分割。
+
+**需求：**使用Hive建表映射成功数据，对数据拆分，要求拆分之后数据如下所示：
+
+![image-20210905171631809](./img/image-20210905171631809.png)
+
+##### 建表加载数据
+
+![image-20210905171829216](./img/image-20210905171829216.png)
+
+##### 	SQL 实现业务需求
+
+![image-20210905172111244](./img/image-20210905172111244.png)
+
+##### 执行报错
+
+1. 在select条件中，如果只有explode函数表达式，程序执行是没有任何问题的；
+2. 但是如果在select条件中，包含explode和其他字段，就会报错；
+3. 如何理解这个错误？为什么在select的时候，explode的旁边不支持其他字段的同时出现？
+
+> UDTF's are not supported outside the SELECT clause, nor nested in expressions
+
+![image-20210905172317069](./img/image-20210905172317069.png)
+
+##### UDTF 语法限制
+
+1. explode函数属于UDTF表生成函数，explode执行返回结果可以理解为一张虚拟表，其数据来源于源表；
+
+2. 在select中只查询源表数据没有问题，只查询explode生成的虚拟表数据也没问题，但是**不能在只查询源表的时候，既想返回源表字段又想返回explode生成的虚拟表字段**；通俗点讲，有两张表，不能只查询一张表但是又想返回分别属于两张表的字段；
+
+![image-20210905172529961](./img/image-20210905172529961.png)
+
+##### UDTF 语法限制解决
+
+1. 从SQL层面上来说上述问题的解决方案是：对两张表进行join关联查询;
+2. Hive专门提供了语法**lateral View侧视图**，专门用于搭配explode这样的UDTF函数，以满足上述需要。
+
+![image-20210905172705412](./img/image-20210905172705412.png)
+
+### Lateral View 侧视图
+
+#### 概念
+
+Lateral View是一种特殊的语法，主要搭配UDTF类型函数一起使用，用于解决UDTF函数的一些查询限制的问题。一般只要使用UDTF，就会固定搭配lateral view使用。
+
+官方链接：https://cwiki.apache.org/confluence/display/Hive/LanguageManual+LateralView
+
+#### 原理
+
+将UDTF的结果构建成一个类似于视图的表，然后将原表中的每一行和UDTF函数输出的每一行进行连接，生成一张新的虚拟表。这样就避免了UDTF的使用限制问题。
+
+使用lateral view时也可以对UDTF产生的记录设置字段名称，产生的字段可以用于group by、order by 、limit等语句中，不需要再单独嵌套一层子查询。
+
+![image-20210905173105093](./img/image-20210905173105093.png)
+
+#### Lateral View + UDTF 使用
+
+针对explode案例中NBA冠军球队年份排名案例，使用explode函数+lateral view侧视图，可以完美解决：
+
+![image-20210905173229858](./img/image-20210905173229858.png)
+
+### Aggregation 聚合函数
+
+#### 概述
+
+聚合函数的功能是：**对一组值执行计算并返回单一的值**。
+
+聚合函数是典型的**输入多行输出一行**，使用Hive的分类标准，属于UDAF类型函数。
+
+通常搭配Group By语法一起使用，分组后进行聚合操作。
+
+![image-20210905173440494](./img/image-20210905173440494.png)
+
+#### 基础聚合
+
+HQL提供了几种内置的UDAF聚合函数，例如**max（...），min（...）和avg**（...）**。这些我们把它称之为基础的聚合函数。
+
+通常情况下聚合函数会与GROUP BY子句一起使用。如果未指定GROUP BY子句，默认情况下，它会汇总所有行数据。
+
+```sql
+--------------基础聚合函数-------------------
+-- 1、测试数据准备
+drop table if exists student;
+create table student(
+    num int,
+    name string,
+    sex string,
+    age int,
+    dept string)
+row format delimited
+fields terminated by ',';
+-- 加载数据
+load data local inpath '/root/hivedata/students.txt' into table student;
+-- 验证
+select * from student;
+
+
+-- 场景1：没有group by子句的聚合操作
+--    count(*) 所有行进行统计，包括 NULL 行
+--    count(1) 所有行进行统计，包括 NULL 行 
+--    count(column) 对 column 中非NULL进行统计
+select count(*) as cnt1, count(1) as cnt2, count(sex) cnt3 from student; 
+
+-- 场景2：带有group by子句的聚合操作 注意group by语法限制
+select sex,count(*) as cnt from student group by sex;
+
+-- 场景3：select时多个聚合函数一起使用
+select count(*) as cnt1,avg(age) as cnt2 from student;
+
+-- 场景4：聚合函数和case when条件转换函数、coalesce函数、if函数使用
+select
+    sum(CASE WHEN sex = '男'THEN 1 ELSE 0 END)
+from student;
+
+select
+    sum(if(sex = '男',1,0))
+from student;
+
+-- 场景5：聚合参数不支持嵌套聚合函数
+select avg(count(*))  from student;
+
+-- 聚合参数针对null的处理方式
+-- null null 0
+select max(null), min(null), count(null);
+-- 下面这两个不支持null
+select sum(null), avg(null);
+
+-- 场景5：聚合操作时针对null的处理
+CREATE TABLE tmp_1 (val1 int, val2 int);
+INSERT INTO TABLE tmp_1 VALUES (1, 2),(null,2),(2,3);
+
+select * from tmp_1;
+
+-- 第二行数据(NULL, 2) 在进行sum(val1 + val2)的时候会被忽略
+select sum(val1), sum(val1 + val2) from tmp_1;
+-- 可以使用coalesce函数解决
+select
+    sum(coalesce(val1,0)),
+    sum(coalesce(val1,0) + val2)
+from tmp_1;
+
+-- 场景6：配合distinct关键字去重聚合
+-- 此场景下，会编译期间会自动设置只启动一个reduce task处理数据  性能可能会不会 造成数据拥堵
+select count(distinct sex) as cnt1 from student;
+-- 可以先去重 在聚合 通过子查询完成
+-- 因为先执行distinct的时候 可以使用多个reducetask来跑数据
+select count(*) as gender_uni_cnt
+from (select distinct sex from student) a;
+
+-- 案例需求：找出student中男女学生年龄最大的及其名字
+-- 这里使用了struct来构造数据 然后针对struct应用max找出最大元素 然后取值
+select sex,
+max(struct(age, name)).col1 as age,
+max(struct(age, name)).col2 as name
+from student
+group by sex;
+
+select struct(age, name) from student;
+select struct(age, name).col1 from student;
+select max(struct(age, name)) from student;
+```
+
+#### 增强聚合
+
+增强聚合包括**grouping_sets、cube、rollup**这几个函数；主要适用于OLAP多维数据分析模式中，多维分析中的维指的分析问题时看待问题的维度、角度。
+
+下面通过案例更好的理解函数的功能含义。数据中字段含义：月份、天、用户标识cookieid。
+
+![image-20210905173918137](./img/image-20210905173918137.png)
+
+##### grouping sets
+
+**grouping sets**是一种将多个group by逻辑写在一个sql语句中的便利写法。
+
+等价于将不同维度的GROUP BY结果集进行UNION ALL。
+
+GROUPING__ID表示结果属于哪一个分组集合。
+
+![image-20210905180254634](./img/image-20210905180254634.png)
+
+![image-20210905180127666](./img/image-20210905180127666.png)
+
+##### cube
+
+cube表示根据GROUP BY的维度的所有组合进行聚合。
+
+对于cube来说,如果有n个维度,则所有组合的总个数是：2^n
+
+比如cube有a,b,c 3个维度，则所有组合情况是： (a,b,c),(a,b),(b,c),(a,c),(a),(b),(c),()
+
+![image-20210905180317440](./img/image-20210905180317440.png)
+
+##### rollup
+
+cube的语法功能指的是：根据GROUP BY的维度的所有组合进行聚合。
+
+rollup是cube的子集，以最左侧的维度为主，从该维度进行层级聚合。
+
+比如ROLLUP有a,b,c3个维度，则所有组合情况是：(a,b,c),(a,b),(a),()
+
+![image-20210905180417846](./img/image-20210905180417846.png)
+
+### Window functions 窗口函数
+
+#### 概述
+
+**窗口函数**（Window functions）也叫做开窗函数、OLAP函数，其最大特点是：**输入值是从SELECT语句的结果集中的一行或多行的“窗口”中获取的**。
+
+如果函数具有OVER子句，则它是窗口函数。
+
+窗口函数可以简单地解释为类似于**聚合函数的计算函数**，但是通过GROUP BY子句组合的常规聚合会隐藏正在聚合的各个行，最终输出一行，窗口函数聚合后还可以访问当中的各个行，并且可以将这些行中的某些属性添加到结果集中。
+
+![image-20210905202839203](./img/image-20210905202839203.png)
+
+通过sum聚合函数进行普通常规聚合和窗口聚合，来直观感受窗口函数的特点。
+
+![image-20210905203030690](./img/image-20210905203030690.png)
+
+#### 语法规则
+
+![image-20210905203136383](./img/image-20210905203136383.png)
+
+#### 案例：网站用户页面浏览次数分析
+
+在网站访问中，经常使用cookie来标识不同的用户身份，通过cookie可以追踪不同用户的页面访问情况。
+
+通过用户在网站的访问数据学习Hive中窗口函数的相关语法知识。
+
+有下面两份数据：
+
+![image-20210905203520698](./img/image-20210905203520698.png)
+
+在Hive中创建两张表表，把数据加载进去用于窗口分析。
+
+```sql
+--- 建表并且加载数据
+create table website_pv_info(
+   cookieid string,
+   createtime string,   --day
+   pv int
+) row format delimited
+fields terminated by ',';
+
+create table website_url_info (
+    cookieid string,
+    createtime string,  --访问时间
+    url string       --访问页面
+) row format delimited
+fields terminated by ',';
+
+
+load data local inpath '/root/hivedata/website_pv_info.txt' into table website_pv_info;
+load data local inpath '/root/hivedata/website_url_info.txt' into table website_url_info;
+
+select * from website_pv_info;
+select * from website_url_info;
+```
+
+##### 窗口聚合函数
+
+所谓窗口聚合函数指的是sum、max、min、avg这样的聚合函数在窗口中的使用；
+
+从Hive v2.2.0开始，支持DISTINCT与窗口函数中的聚合函数一起使用。
+
+这里以sum()函数为例，其他聚合函数使用类似。
+
+![image-20210905204143899](./img/image-20210905204143899.png)
+
+![image-20210905204816528](./img/image-20210905204816528.png)
+
+![image-20210905204857274](./img/image-20210905204857274.png)
+
+![image-20210905205040351](./img/image-20210905205040351.png)
+
+#### 窗口表达式
+
+在sum(...) over( partition by... order by ... )语法完整的情况下，进行累积聚合操作，默认累积聚合行为是：**从第一行聚合到当前行**。
+
+Window expression窗口表达式给我们提供了一种控制行范围的能力，比如向前2行，向后3行。
+
+语法如下：
+
+![image-20210905210234836](./img/image-20210905210234836.png)
+
+示例：
+
+![image-20210905210305732](./img/image-20210905210305732.png)
+
+#### 窗口排序函数 - row_number家族
+
+用于给每个分组内的数据打上排序的标号，注意窗口排序函数不支持窗口表达式
+
+- row_number：在每个分组中，为每行分配一个从1开始的唯一序列号，递增，不考虑重复；
+- rank: 在每个分组中，为每行分配一个从1开始的序列号，考虑重复，挤占后续位置；
+- dense_rank: 在每个分组中，为每行分配一个从1开始的序列号，考虑重复，不挤占后续位置；
+
+![image-20210905210908591](./img/image-20210905210908591.png)
+
+**上述这三个函数用于分组TopN的场景非常适合。**
+
+![image-20210905211114016](./img/image-20210905211114016.png)
+
+#### 窗口排序函数--ntile
+
+**将每个分组内的数据分为指定的若干个桶里**（分为若干个部分），并且为每一个桶分配一个桶编号。
+
+如果不能平均分配，则优先分配较小编号的桶，并且各个桶中能放的行数最多相差1。
+
+**有时会有这样的需求:**
+
+如果数据排序后分为三部分，业务人员只关心其中的一部分，如何将这中间的三分之一数据拿出来呢? NTILE函数即可以满足。
+
+![image-20210905211514819](./img/image-20210905211514819.png)
+
+#### 窗口分析函数
+
+- **LAG**(col,n,DEFAULT) 用于统计窗口内往上第n行值
+
+  第一个参数为列名，第二个参数为往上第n行（可选，默认为1），第三个参数为默认值（当往上第n行为NULL时候，取默认值，如不指定，则为NULL）；
+
+- **LEAD**(col,n,DEFAULT) 用于统计窗口内往下第n行值
+
+  第一个参数为列名，第二个参数为往下第n行（可选，默认为1），第三个参数为默认值（当往下第n行为NULL时候，取默认值，如不指定，则为NULL）；
+
+- **FIRST_VALUE** 取分组内排序后，截止到当前行，第一个值
+
+- **LAST_VALUE** 取分组内排序后，截止到当前行，最后一个值
+
+ ![image-20210905211907752](./img/image-20210905211907752.png)
+
+![image-20210905211936112](./img/image-20210905211936112.png)
+
+![image-20210905212106805](./img/image-20210905212106805.png)
+
+### Sampling 抽样函数
+
+#### 概述
+
+当数据量过大时，我们可能需要查找数据子集以加快数据处理速度分析。
+
+这就是**抽样、采样**，一种用于识别和分析数据中的子集的技术，以发现整个数据集中的模式和趋势。
+
+在HQL中，可以通过三种方式采样数据：**随机采样**，**存储桶表采样**和块采样。
+
+![image-20210905212231618](./img/image-20210905212231618.png)
+
+#### Random 随机抽样
+
+随机抽样使用**rand（）**函数来确保随机获取数据，LIMIT来限制抽取的数据个数。 
+
+**优点是随机，缺点是速度不快**，尤其表数据多的时候。
+
+- 推荐**DISTRIBUTE+SORT**，可以确保数据也随机分布在mapper和reducer之间，使得底层执行有效率。
+- **ORDER BY**语句也可以达到相同的目的，但是表现不好，因为ORDER BY是全局排序，只会启动运行一个reducer 。
+
+示例：
+
+![image-20210905212503004](./img/image-20210905212503004.png)
+
+#### Block 基于数据块抽样
+
+Block块采样允许**随机获取n行数据、百分比数据或指定大小的数据。**
+
+采样粒度是**HDFS块大小**。
+
+优点是速度快，缺点是不随机。
+
+![image-20210905212746127](./img/image-20210905212746127.png)
+
+#### Bucket table 基于分桶表抽样
+
+这是一种特殊的采样方法，针对分桶表进行了优化。
+
+**优点是既随机速度也很快。**
+
+语法如下：
+
+![image-20210905212905004](./img/image-20210905212905004.png)
+
+示例：
+
+![image-20210905212944859](./img/image-20210905212944859.png)
